@@ -11,13 +11,11 @@ import SectionHeading from "../components/ui/SectionHeading";
 import Header from "../components/ui/Header";
 import CourseList from "../components/homepage/CourseList";
 import CreateCourse from "../components/homepage/CreateCourse";
-import CourseAddPopup from "../components/homepage/CourseAddPopup";
 
 function HomeDashboard() {
   const { user }                      = useAuth();
   const navigate                      = useNavigate();
   const [courseList, setCourseList]   = useState([]);
-  const [showPopup, setPopup]         = useState(false);
   const [loadError, setLoadError]     = useState(null);
  
   // Load enrolled courses on mount
@@ -35,6 +33,7 @@ function HomeDashboard() {
               : "Time TBD",
             ref:       c.section ?? "Active",
             join_code: c.join_code,
+            students:  c.student_count,
           }))
         )
       )
@@ -61,38 +60,12 @@ function HomeDashboard() {
             : "Time TBD",
           ref:       data.section ?? "Active",
           join_code: data.join_code,
+          students:  0,
         },
         ...prev,
       ]);
     } catch (err) {
       console.error("Failed to create course:", err.response?.data?.error);
-    }
-  }
- 
-  async function addCourse(formData) {
-    const join_code = formData.get("courseid");
-    if (!join_code) return;
- 
-    try {
-      const { data } = await api.post("/api/classes/join", { join_code });
-      setCourseList((prev) => [
-        {
-          id:    data.id,
-          title: data.title,
-          prof:  data.professor_name,
-          hours: data.start_time && data.end_time
-            ? `${data.start_time} – ${data.end_time}`
-            : "Time TBD",
-          ref:   data.section ?? "Active",
-        },
-        ...prev,
-      ]);
-      setPopup(false);
-    } catch (err) {
-      console.error(
-        "Failed to join course:",
-        err.response?.data?.error ?? err.message
-      );
     }
   }
  
@@ -106,13 +79,6 @@ function HomeDashboard() {
       <main className="relative flex-1 pb-2">
         <Header rightContent={() => null} />
  
-        {showPopup && (
-          <CourseAddPopup
-            removePopUp={() => setPopup(false)}
-            addCourse={addCourse}
-          />
-        )}
-
         {user?.role === "professor" && (
           <CreateCourse submitCourse={createCourse} />
         )}
@@ -120,12 +86,6 @@ function HomeDashboard() {
         <div className="p-4 sm:p-6 lg:p-8">
           <div className="flex flex-wrap gap-3 justify-between items-center mb-6">
             <SectionHeading text="Enrolled Courses" />
-            <button
-              className="blue-btn text-sm"
-              onClick={() => setPopup(true)}
-            >
-              <span className="text-base">+</span> Add a Course
-            </button>
           </div>
 
           {loadError && (
@@ -136,6 +96,7 @@ function HomeDashboard() {
 
           <CourseList
             courses={courseList}
+            showStudents={user?.role === "professor"}
             onCourseClick={handleCourseClick}
           />
         </div>

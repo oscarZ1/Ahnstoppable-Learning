@@ -1,11 +1,11 @@
 // src/components/homepage/CourseList.jsx
 import React from "react";
 
-function CourseList({ courses, onCourseClick }) {
+function CourseList({ courses, onCourseClick, showStudents = false }) {
   if (courses.length === 0) {
     return (
       <p className="text-sm text-slate-400 text-center py-10">
-        No courses yet. Join one with a code or create a new class above.
+        You're not in any classes yet. Professors can create one above; students are added by their professor.
       </p>
     );
   }
@@ -31,11 +31,6 @@ function CourseList({ courses, onCourseClick }) {
               <span className="text-xs font-bold px-2 py-1 rounded bg-white dark:bg-slate-700 text-slate-400 border border-slate-200 dark:border-slate-600">
                 {course.ref ?? "Active"}
               </span>
-              {course.join_code && (
-                <span className="text-xs font-mono text-slate-400 dark:text-slate-500">
-                  Code: {course.join_code}
-                </span>
-              )}
             </div>
           </div>
 
@@ -45,6 +40,11 @@ function CourseList({ courses, onCourseClick }) {
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             {course.hours}
+            {showStudents && course.students != null && (
+              <span className="ml-auto">
+                {course.students} student{course.students === 1 ? "" : "s"} enrolled
+              </span>
+            )}
           </div>
         </div>
       ))}

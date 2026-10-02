@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 
 import UnderstandCheck from "../components/classroom/UnderstandCheck";
 import ClassPolls from "../components/classroom/ClassPolls";
+import ClassRoster from "../components/classroom/ClassRoster";
 import TalentBoard from "../components/classroom/TalentBoard";
 import Header from "../components/ui/Header";
 import ViewLogs from "../components/classroom/ViewLogs";
@@ -85,6 +86,13 @@ function ClassDashboard() {
           <div className="w-full sm:w-3/4 max-w-2xl">
             <TalentBoard classId={classId} />
           </div>
+
+          {/* Roster (professor only) — students sign in by picking a name from it */}
+          {user?.role === "professor" && (
+            <div className="w-full sm:w-3/4 max-w-2xl">
+              <ClassRoster classId={classId} />
+            </div>
+          )}
 
         </div>
       </main>

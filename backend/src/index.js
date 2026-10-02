@@ -17,6 +17,7 @@ import commentRoutes from './routes/comments.js';
 import classroomRoutes from './routes/classroom.js';
 import questionRoutes from './routes/questions.js';
 import pollRoutes from './routes/polls.js';
+import rosterRoutes from './routes/roster.js';
 import registerSockets from './socket/index.js';
 
 // ── Boot-time config checks ──────────────────────────────────────────────────
@@ -53,6 +54,7 @@ app.use('/api/classes/:classId/posts',            postRoutes);
 app.use('/api/posts/:postId/comments',            commentRoutes);
 app.use('/api/classes/:classId/questions',        questionRoutes);
 app.use('/api/classes/:classId/polls',            pollRoutes);
+app.use('/api/classes/:classId/roster',           rosterRoutes);
 app.use('/api/classes/:classId',                  classroomRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────

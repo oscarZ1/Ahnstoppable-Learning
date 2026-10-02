@@ -1,4 +1,6 @@
-// src/components/Dashboards/Register.jsx
+// src/pages/Register.jsx
+// Professor registration. Students don't register; their professor adds
+// them to a class roster and they sign in by picking their name.
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -14,7 +16,6 @@ function Register() {
     email:    "",
     password: "",
     confirm:  "",
-    role:     "student",
     professorCode: "",
   });
   const [isVisible, setVisible] = useState(false);
@@ -41,13 +42,13 @@ function Register() {
       setError("Password must be at least 6 characters.");
       return;
     }
-    if (form.role === "professor" && !form.professorCode.trim()) {
+    if (!form.professorCode.trim()) {
       setError("A professor signup code is required.");
       return;
     }
     setLoading(true);
     try {
-      await register(form.email, form.password, form.name, form.role, form.professorCode.trim());
+      await register(form.email, form.password, form.name, form.professorCode.trim());
       navigate("/home");
     } catch (err) {
       setError(err.response?.data?.error ?? "Registration failed. Please try again.");
@@ -65,7 +66,7 @@ function Register() {
         <div className="w-full max-w-md">
           <div className="p-6 sm:p-8 rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 shadow-sm">
             <h1 className="std-text text-center text-2xl sm:text-3xl font-semibold">
-              Create an account
+              Professor registration
             </h1>
 
             <form className="mt-8 sm:mt-10 space-y-5" onSubmit={handleRegister}>
@@ -149,24 +150,8 @@ function Register() {
                 </div>
               </div>
 
-              {/* Role */}
-              <div>
-                <label className="std-text text-sm mb-2 block" htmlFor="role">I am a</label>
-                <select
-                  id="role"
-                  name="role"
-                  value={form.role}
-                  onChange={handleChange}
-                  className="w-full std-text bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-4 py-3 rounded-md outline-blue-600 focus:ring-2 focus:ring-blue-500/20"
-                >
-                  <option value="student">Student</option>
-                  <option value="professor">Professor</option>
-                </select>
-              </div>
-
               {/* Professor signup code */}
-              {form.role === "professor" && (
-                <div>
+              <div>
                   <label className="std-text text-sm mb-2 block" htmlFor="professorCode">Professor signup code</label>
                   <input
                     id="professorCode"
@@ -178,8 +163,7 @@ function Register() {
                     className="w-full std-text bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-4 py-3 rounded-md outline-blue-600 focus:ring-2 focus:ring-blue-500/20"
                     placeholder="Provided by your administrator"
                   />
-                </div>
-              )}
+              </div>
 
               {error && (
                 <p className="text-sm text-red-500 text-center">{error}</p>

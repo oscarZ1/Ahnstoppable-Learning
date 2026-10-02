@@ -5,9 +5,10 @@
 -- Users (students AND professors share the same table; role distinguishes them)
 CREATE TABLE users (
     id          SERIAL PRIMARY KEY,
-    email       TEXT NOT NULL UNIQUE,
-    password    TEXT NOT NULL,          -- bcrypt hash
-    name        TEXT NOT NULL,
+    email       TEXT UNIQUE,            -- professors only; roster students have none
+    password    TEXT,                   -- bcrypt hash; NULL until a roster student creates one
+    name        TEXT NOT NULL,          -- "First Last"
+    sort_name   TEXT,                   -- "Last, First" for the sign-in dropdown
     role        TEXT NOT NULL DEFAULT 'student'  -- 'student' | 'professor'
                 CHECK (role IN ('student','professor')),
     talents     INTEGER NOT NULL DEFAULT 0,

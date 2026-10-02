@@ -20,12 +20,15 @@ router.get('/', requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, c.title, c.section, c.start_time, c.end_time, c.professor_id,
               CASE WHEN c.professor_id = $1 THEN c.join_code END AS join_code,
-              u.name AS professor_name
+              u.name AS professor_name,
+              (SELECT COUNT(*)::int
+               FROM   class_members m JOIN users s ON s.id = m.user_id
+               WHERE  m.class_id = c.id AND s.role = 'student') AS student_count
        FROM   classes c
        JOIN   class_members cm ON cm.class_id = c.id
        JOIN   users u          ON u.id = c.professor_id
        WHERE  cm.user_id = $1
-       ORDER  BY c.title`,
+       ORDER  BY c.title, c.section NULLS FIRST`,
       [req.user.id]
     );
     return res.json(rows);

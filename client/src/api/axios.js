@@ -21,7 +21,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // An expired or invalid session sends the user back to sign in. A failed
+    // sign-in attempt (wrong password) also returns 401, but the sign-in form
+    // must stay put so it can show the error.
+    const isSignInAttempt = error.config?.url?.startsWith('/api/auth/');
+    if (error.response?.status === 401 && !isSignInAttempt) {
       // Token expired or invalid – clear storage and redirect to sign-in
       localStorage.removeItem('token');
       localStorage.removeItem('user');
