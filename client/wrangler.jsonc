@@ -1,0 +1,14 @@
+// Cloudflare Workers config for the website (static files only, no server code).
+// Workers Builds runs `npm run build` in client/, then `npx wrangler deploy`
+// uploads dist/. Set VITE_API_URL under Settings > Build > "Build variables
+// and secrets": Vite reads it at build time, not at runtime.
+{
+  "name": "ahnstoppable-learning",
+  "compatibility_date": "2026-10-03",
+  "assets": {
+    "directory": "./dist",
+    // Serve index.html for app routes like /home and /class/12, so refreshing
+    // or opening a link to them doesn't 404.
+    "not_found_handling": "single-page-application"
+  }
+}
