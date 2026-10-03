@@ -14,6 +14,7 @@ import pool from '../db/pool.js';
 import { requireAuth, requireClassMemberViaPost } from '../middleware/auth.js';
 import { forRequester } from '../utils/anonymity.js';
 import { emitToClass } from '../socket/emit.js';
+import { discussionLimits } from '../middleware/rateLimit.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -64,7 +65,7 @@ router.get('/', requireAuth, requireClassMemberViaPost, async (req, res) => {
 });
 
 // ── Add a comment ─────────────────────────────────────────────────────────────
-router.post('/', requireAuth, requireClassMemberViaPost, async (req, res) => {
+router.post('/', requireAuth, requireClassMemberViaPost, ...discussionLimits, async (req, res) => {
   const { postId } = req.params;
   const { content } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: 'content is required.' });
@@ -121,7 +122,7 @@ router.delete('/:commentId', requireAuth, requireClassMemberViaPost, async (req,
 });
 
 // ── Add a reply ───────────────────────────────────────────────────────────────
-router.post('/:commentId/replies', requireAuth, requireClassMemberViaPost, async (req, res) => {
+router.post('/:commentId/replies', requireAuth, requireClassMemberViaPost, ...discussionLimits, async (req, res) => {
   const { postId, commentId } = req.params;
   const { content } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: 'content is required.' });

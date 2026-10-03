@@ -11,6 +11,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { requireAuth, requireProfessor, requireClassMember } from '../middleware/auth.js';
 import { enrollNames } from '../services/roster.js';
+import { clearStudentLockout } from '../middleware/rateLimit.js';
 
 const router = express.Router({ mergeParams: true });
 const NUMERIC = /^\d+$/;
@@ -103,6 +104,7 @@ router.post('/:userId/reset-password', ...guard, async (req, res) => {
       [userId, req.classId]
     );
     if (rowCount === 0) return res.status(404).json({ error: 'That student is not in this class.' });
+    await clearStudentLockout(userId);
     return res.json({ reset: Number(userId) });
   } catch (err) {
     console.error(err);

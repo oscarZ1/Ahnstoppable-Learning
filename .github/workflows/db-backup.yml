@@ -1,0 +1,78 @@
+# Daily encrypted backup of the production database (Supabase).
+#
+# The repository is public, so every dump is encrypted with BACKUP_PASSPHRASE
+# before it is uploaded. Without the passphrase the file is unreadable.
+# Restore steps: docs/database-backups.md
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL    Supabase "Session pooler" connection string
+#   BACKUP_PASSPHRASE  long random passphrase; keep a copy somewhere safe
+#
+# Scheduled runs only happen from the default branch (main). The daily query
+# also counts as activity, so a free Supabase project won't pause.
+name: Database backup
+
+on:
+  schedule:
+    - cron: "0 10 * * *"   # every day at 10:00 UTC (3 AM Pacific)
+  workflow_dispatch:        # "Run workflow" button for an on-demand backup
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check secrets are set
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          missing=0
+          [ -n "$SUPABASE_DB_URL" ]   || { echo "::error::SUPABASE_DB_URL secret is not set"; missing=1; }
+          [ -n "$BACKUP_PASSPHRASE" ] || { echo "::error::BACKUP_PASSPHRASE secret is not set"; missing=1; }
+          exit $missing
+
+      # pg_dump must be at least as new as the server; Supabase runs Postgres 15
+      # or 17, and pg_dump 17 handles both.
+      - name: Install pg_dump 17
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Dump and encrypt
+        id: dump
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          PGSSLMODE: require
+        run: |
+          set -euo pipefail
+          file="ahnstoppable-$(date -u +%Y-%m-%dT%H%MZ).dump.enc"
+          # Only the app's tables in the public schema (not the schema itself,
+          # which Supabase manages), without owners or grants, so it restores
+          # into any Postgres and a --clean restore only drops app tables.
+          /usr/lib/postgresql/17/bin/pg_dump \
+            --format=custom --table='public.*' --no-owner --no-privileges \
+            --dbname="$SUPABASE_DB_URL" --file=backup.dump
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
+            -pass env:BACKUP_PASSPHRASE -in backup.dump -out "$file"
+          rm backup.dump
+          ls -lh "$file"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Store backup for 30 days
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dump.outputs.file }}
+          path: ${{ steps.dump.outputs.file }}
+          retention-days: 30
+          if-no-files-found: error

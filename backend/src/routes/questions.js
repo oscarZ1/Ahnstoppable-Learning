@@ -11,6 +11,7 @@ import pool from '../db/pool.js';
 import { requireAuth, requireProfessor, requireClassMember } from '../middleware/auth.js';
 import { forRequester } from '../utils/anonymity.js';
 import { emitToClass } from '../socket/emit.js';
+import { questionLimits } from '../middleware/rateLimit.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -44,7 +45,7 @@ router.get('/', requireAuth, requireClassMember, async (req, res) => {
 });
 
 // ── Ask a question ────────────────────────────────────────────────────────────
-router.post('/', requireAuth, requireClassMember, async (req, res) => {
+router.post('/', requireAuth, requireClassMember, ...questionLimits, async (req, res) => {
   const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
   const { asked_date } = req.body;
   if (!content) return res.status(400).json({ error: 'content is required.' });

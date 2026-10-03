@@ -12,6 +12,7 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db/pool.js';
+import { accountLimiter, ipLimiter } from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ const MIN_PASSWORD = 6;
 const NUMERIC      = /^\d+$/;
 
 // ── Register ──────────────────────────────────────────────────────────────────
-router.post('/register', async (req, res) => {
+router.post('/register', ipLimiter, accountLimiter, async (req, res) => {
   const { email, password, name, role = 'professor', professor_code } = req.body;
 
   if (!email || !password || !name) {
@@ -61,7 +62,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ── Login ─────────────────────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', ipLimiter, accountLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -140,7 +141,7 @@ async function findRosterStudent(classId, userId) {
 }
 
 // ── Student sign-in: name + password ─────────────────────────────────────────
-router.post('/student-login', async (req, res) => {
+router.post('/student-login', ipLimiter, accountLimiter, async (req, res) => {
   const { class_id, user_id, password } = req.body;
   if (!password) return res.status(400).json({ error: 'password is required.' });
   try {
@@ -161,7 +162,7 @@ router.post('/student-login', async (req, res) => {
 });
 
 // ── Student sign-in: first time, create a password ───────────────────────────
-router.post('/student-setup', async (req, res) => {
+router.post('/student-setup', ipLimiter, accountLimiter, async (req, res) => {
   const { class_id, user_id, password } = req.body;
   if (typeof password !== 'string' || password.length < MIN_PASSWORD) {
     return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD} characters.` });

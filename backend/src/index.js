@@ -19,6 +19,7 @@ import questionRoutes from './routes/questions.js';
 import pollRoutes from './routes/polls.js';
 import rosterRoutes from './routes/roster.js';
 import registerSockets from './socket/index.js';
+import pool from './db/pool.js';
 
 // ── Boot-time config checks ──────────────────────────────────────────────────
 // Fail loudly here rather than falling back to '*' CORS or an undefined JWT secret.
@@ -30,6 +31,10 @@ for (const key of ['JWT_SECRET', 'CORS_ORIGIN']) {
 const origins = process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
 
 const app = express();
+// Railway (and most hosts) put one proxy in front of the app. Trusting exactly
+// one hop makes req.ip the real visitor address for rate limiting, without
+// letting a client spoof it through its own X-Forwarded-For header.
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 // ── Socket.IO ────────────────────────────────────────────────────────────────
@@ -58,7 +63,17 @@ app.use('/api/classes/:classId/roster',           rosterRoutes);
 app.use('/api/classes/:classId',                  classroomRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+// Runs a real query so an uptime ping also keeps a free Supabase project from
+// pausing for inactivity, and so a broken database shows up as a failed check.
+app.get('/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', database: 'ok' });
+  } catch (err) {
+    console.error('Health check database error:', err.message);
+    res.status(503).json({ status: 'error', database: 'unreachable' });
+  }
+});
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Not found.' }));

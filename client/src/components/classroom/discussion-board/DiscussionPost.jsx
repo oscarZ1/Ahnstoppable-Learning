@@ -13,6 +13,7 @@ function unionById(fetched, existing) {
 
 function DiscussionPost({ post, setPosts, showNames }) {
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let ignore = false;
@@ -41,11 +42,13 @@ function DiscussionPost({ post, setPosts, showNames }) {
   async function addComment(text) {
     if (!text.trim() || submitting) return;
     setSubmitting(true);
+    setError(null);
     try {
       // The socket event 'comment:new' handles the state update.
       await api.post(`/api/posts/${post.id}/comments`, { content: text });
     } catch (err) {
       console.error("Failed to post comment:", err);
+      setError(err.response?.data?.error ?? "Couldn't post your comment.");
     } finally {
       setSubmitting(false);
     }
@@ -53,6 +56,7 @@ function DiscussionPost({ post, setPosts, showNames }) {
 
   async function addReply(commentId, text) {
     if (!text.trim()) return;
+    setError(null);
     try {
       // Same pattern: socket event 'reply:new' handles the state update.
       await api.post(
@@ -61,6 +65,7 @@ function DiscussionPost({ post, setPosts, showNames }) {
       );
     } catch (err) {
       console.error("Failed to post reply:", err);
+      setError(err.response?.data?.error ?? "Couldn't post your reply.");
     }
   }
 
@@ -86,6 +91,7 @@ function DiscussionPost({ post, setPosts, showNames }) {
       <hr className="border-slate-200 dark:border-slate-700 my-3 sm:my-4" />
 
       <QuestionsInput addItem={addComment} disabled={submitting} />
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
       <QuestionsList
         items={post.comments ?? []}
