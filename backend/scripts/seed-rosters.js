@@ -6,30 +6,9 @@ import 'dotenv/config';
 import crypto from 'node:crypto';
 import pool from '../src/db/pool.js';
 import { enrollNames } from '../src/services/roster.js';
+import { CLASSES } from './rosters.js';   // the real class lists
 
 const PROFESSOR_EMAIL = (process.argv[2] ?? 'ahn@demo.edu').toLowerCase();
-
-const ADV_375 = [
-  'Backstrom, Lauren', 'Bender, Ava', 'Birkhead, Craig', 'Calderon, Aaliyah', 'Chahoud, Anthony',
-  'Cifuentes, SofiaMarie', 'Curley, Addison', 'Duhs, Parker', 'Flores, Larry', 'Gillman, Payton',
-  'Janjic, Ella', 'McCaig, Jenna', 'McDowell, Katerina', 'Moncalian, Mariah', 'Pfefferkorn, Trey',
-  'Ryu, Emily', 'Stringer, Liam', 'Trapp, Annie', 'Wilkinson, Owen', 'Wilson, Estela', 'Wozniak, Anna',
-];
-
-const CLASSES = [
-  {
-    title: 'ADV 275', section: null,
-    students: [
-      'Baker, Lauren', 'Brown, Georgia', 'Burgett, Ashlyn', 'Cruz, Stephania', 'Dela Cruz, Ava',
-      'Deliguin, Isabella', 'Duke, Katie', 'Khurana, Samara', 'Lee, Happy', 'Logan, Malia',
-      'Longnecker, Liana', 'Peck, Bree', 'Powell, Alexandra', 'Segura, Valentina', 'Speier, Taityn',
-      'Steppe, Lila', 'Tennis, Gianna', 'Thorne-Thomsen, Wynter', 'Usi, Josh', 'Wang, Joline',
-      'Wilson, London', 'Zermeno, Talia',
-    ],
-  },
-  { title: 'ADV 375', section: '01', students: ADV_375 },
-  { title: 'ADV 375', section: '02', students: ADV_375 },
-];
 
 const { rows: profs } = await pool.query(
   `SELECT id, name FROM users WHERE email = $1 AND role = 'professor'`, [PROFESSOR_EMAIL]

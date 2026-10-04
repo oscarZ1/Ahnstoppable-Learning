@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import Header from "./components/ui/Header";
 
 import SignIn from "./pages/SignIn";
 import HomeDashboard from "./pages/HomeDashboard";
@@ -16,6 +17,10 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        {/* The header sits above every page, signed in or not. Pages fill the
+            remaining height (flex-1) instead of setting min-h-screen themselves. */}
+        <div className="min-h-screen flex flex-col background">
+        <Header />
         <Routes>
           <Route path="/"               element={<SignIn />} />
           <Route path="/register"       element={<Register />} />
@@ -24,6 +29,7 @@ function App() {
           <Route path="/class/:classId" element={<PrivateRoute><ClassDashboard /></PrivateRoute>} />
           <Route path="*"               element={<Navigate to="/" replace />} />
         </Routes>
+        </div>
       </BrowserRouter>
     </AuthProvider>
   );

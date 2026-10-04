@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import api from "../../../api/axios";
 import QuestionsInput from "./QuestionsInput";
 import QuestionsList from "./QuestionsList";
+import { useClassView, PREVIEW_MESSAGE } from "../../../context/ClassViewContext";
 
 // Fetched rows win on duplicates; anything that arrived over the socket while
 // the fetch was in flight is kept rather than overwritten.
@@ -14,6 +15,7 @@ function unionById(fetched, existing) {
 function DiscussionPost({ post, setPosts, showNames }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const { preview } = useClassView();
 
   useEffect(() => {
     let ignore = false;
@@ -41,6 +43,7 @@ function DiscussionPost({ post, setPosts, showNames }) {
 
   async function addComment(text) {
     if (!text.trim() || submitting) return;
+    if (preview) { setError(PREVIEW_MESSAGE); return; }
     setSubmitting(true);
     setError(null);
     try {
@@ -56,6 +59,7 @@ function DiscussionPost({ post, setPosts, showNames }) {
 
   async function addReply(commentId, text) {
     if (!text.trim()) return;
+    if (preview) { setError(PREVIEW_MESSAGE); return; }
     setError(null);
     try {
       // Same pattern: socket event 'reply:new' handles the state update.

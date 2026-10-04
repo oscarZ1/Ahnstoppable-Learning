@@ -6,13 +6,13 @@ import UnderstandCheck from "../components/classroom/UnderstandCheck";
 import ClassPolls from "../components/classroom/ClassPolls";
 import ClassRoster from "../components/classroom/ClassRoster";
 import TalentBoard from "../components/classroom/TalentBoard";
-import Header from "../components/ui/Header";
 import ViewLogs from "../components/classroom/ViewLogs";
 import CreateDiscussion from "../components/classroom/CreateDiscussion";
 import DiscussionFeed from "../components/classroom/discussion-board/DiscussionFeed";
 import AnonymousToggle from "../components/classroom/AnonymousToggle";
 import StudentQuestions from "../components/classroom/StudentQuestions";
 import { useAuth } from "../context/AuthContext";
+import { ClassViewContext } from "../context/ClassViewContext";
 import { useClassRoom } from "../hooks/useClassRoom";
 
 function ClassDashboard() {
@@ -20,6 +20,11 @@ function ClassDashboard() {
   const { classId } = useParams();
   const { user }    = useAuth();
   const [showNames, setShowNames] = useState(user?.role === 'professor');
+  // "View as student": the page renders exactly as students see it.
+  const [preview, setPreview] = useState(false);
+  const isRealProfessor = user?.role === "professor";
+  const isProfessorView = isRealProfessor && !preview;
+  const namesVisible    = showNames && !preview;   // students see classmates as Anonymous
 
   // Connects the shared socket and joins this class's room; child components
   // (DiscussionFeed, UnderstandCheck, ClassPolls) only subscribe to events.
@@ -33,9 +38,9 @@ function ClassDashboard() {
   }
 
   return (
-    <div className="min-h-screen background flex transition-colors duration-300">
+    <ClassViewContext.Provider value={{ preview }}>
+    <div className="flex-1 background flex transition-colors duration-300">
       <main className="w-full">
-        <Header rightContent={() => null} />
 
         <div className="mx-auto flex flex-col justify-center items-center gap-4 w-full px-4 sm:px-6 lg:w-10/12 lg:px-0 pb-8 bg-white dark:bg-slate-800">
 
@@ -44,12 +49,27 @@ function ClassDashboard() {
             <div className="overflow-x-auto">
               <ViewLogs date={viewDate} today={today} handleDate={handleDate} classId={classId} />
             </div>
-            {user?.role === "professor" && (
-              <div className="px-2 sm:px-3">
-                <AnonymousToggle showNames={showNames} setShowNames={setShowNames} />
+            {isRealProfessor && (
+              <div className="px-2 sm:px-3 flex flex-wrap items-center gap-2">
+                {!preview && <AnonymousToggle showNames={showNames} setShowNames={setShowNames} />}
+                <button
+                  type="button"
+                  onClick={() => setPreview((v) => !v)}
+                  aria-pressed={preview}
+                  className={preview ? "blue-btn text-xs py-2" : "white-btn text-xs py-2 border border-slate-200 dark:border-slate-700"}
+                >
+                  {preview ? "Exit student view" : "👁 View as student"}
+                </button>
               </div>
             )}
           </div>
+
+          {preview && (
+            <div role="status" className="w-full sm:w-3/4 max-w-2xl rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+              <span className="font-semibold">Viewing as a student.</span>{" "}
+              This is what students see in this class. Votes, questions and comments are turned off while you preview.
+            </div>
+          )}
 
           {/* Understanding check — full width on mobile */}
           <div className="w-full sm:w-3/4 max-w-2xl">
@@ -63,11 +83,11 @@ function ClassDashboard() {
 
           {/* Student question box */}
           <div className="w-full sm:w-3/4 max-w-2xl">
-            <StudentQuestions classId={classId} date={viewDate} showNames={showNames} />
+            <StudentQuestions classId={classId} date={viewDate} showNames={namesVisible} />
           </div>
 
           {/* Professor controls */}
-          {user?.role === "professor" && (
+          {isProfessorView && (
             <div className="w-full sm:w-3/4 max-w-2xl">
               <CreateDiscussion classRoomId={classId} />
             </div>
@@ -78,7 +98,7 @@ function ClassDashboard() {
             <DiscussionFeed
               date={viewDate}
               classRoomId={classId}
-              showNames={showNames}
+              showNames={namesVisible}
             />
           </div>
 
@@ -88,7 +108,7 @@ function ClassDashboard() {
           </div>
 
           {/* Roster (professor only) — students sign in by picking a name from it */}
-          {user?.role === "professor" && (
+          {isProfessorView && (
             <div className="w-full sm:w-3/4 max-w-2xl">
               <ClassRoster classId={classId} />
             </div>
@@ -97,6 +117,7 @@ function ClassDashboard() {
         </div>
       </main>
     </div>
+    </ClassViewContext.Provider>
   );
 }
 

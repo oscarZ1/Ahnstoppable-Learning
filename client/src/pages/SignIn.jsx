@@ -7,7 +7,6 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import PhotoHeader from "../components/ui/PhotoHeader";
-import SiteTagline from "../components/ui/SiteTagline";
 
 const MIN_PASSWORD = 6;
 
@@ -271,9 +270,8 @@ function SignIn() {
   const [mode, setMode] = useState("student");
 
   return (
-    <div className="bg-gray-50 dark:bg-slate-950 min-h-screen">
-      <SiteTagline />
-      <div className="min-h-screen flex flex-row gap-6 items-center justify-center py-6 px-4 transition-colors duration-300">
+    <div className="flex-1 flex flex-col bg-gray-50 dark:bg-slate-950">
+      <div className="flex-1 flex flex-row gap-6 items-center justify-center py-6 px-4 transition-colors duration-300">
 
         {/* Sign in card */}
         <div className="w-full max-w-md">

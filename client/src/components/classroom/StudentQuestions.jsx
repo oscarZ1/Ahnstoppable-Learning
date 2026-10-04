@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import SectionHeading from "../ui/SectionHeading";
 import api from "../../api/axios";
 import socket from "../../api/socket";
-import { useAuth } from "../../context/AuthContext";
+import { useClassView, PREVIEW_MESSAGE } from "../../context/ClassViewContext";
 
 const MAX_LEN = 300;
 
@@ -54,8 +54,7 @@ function AnswerBox({ onSubmit }) {
 }
 
 function StudentQuestions({ classId, date, showNames }) {
-  const { user } = useAuth();
-  const isProfessor = user?.role === "professor";
+  const { isProfessor, preview } = useClassView();
   const today = new Date().toLocaleDateString("en-CA");
 
   const [questions, setQuestions] = useState([]);
@@ -94,6 +93,7 @@ function StudentQuestions({ classId, date, showNames }) {
   async function ask() {
     const content = draft.trim();
     if (!content || busy) return;
+    if (preview) { setError(PREVIEW_MESSAGE); return; }
     setBusy(true); setError(null);
     try {
       const { data } = await api.post(`/api/classes/${classId}/questions`, { content, asked_date: today });

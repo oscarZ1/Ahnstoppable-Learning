@@ -8,7 +8,6 @@ import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 
 import SectionHeading from "../components/ui/SectionHeading";
-import Header from "../components/ui/Header";
 import CourseList from "../components/homepage/CourseList";
 import CreateCourse from "../components/homepage/CreateCourse";
 
@@ -75,9 +74,8 @@ function HomeDashboard() {
   }
  
   return (
-    <div className="min-h-screen background flex transition-colors duration-300">
+    <div className="flex-1 background flex transition-colors duration-300">
       <main className="relative flex-1 pb-2">
-        <Header rightContent={() => null} />
  
         {user?.role === "professor" && (
           <CreateCourse submitCourse={createCourse} />

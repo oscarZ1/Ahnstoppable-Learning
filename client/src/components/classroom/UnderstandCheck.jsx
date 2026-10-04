@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import SectionHeading from "../ui/SectionHeading";
 import api from "../../api/axios";
 import socket from "../../api/socket";
-import { useAuth } from "../../context/AuthContext";
+import { useClassView, PREVIEW_MESSAGE } from "../../context/ClassViewContext";
 
 const RESPONSES = [
   { key: "thumbs_down", emoji: "👎", label: "Lost",     bg: "bg-red-500",    active: "active:bg-red-400"    },
@@ -69,8 +69,7 @@ function TallyColumns({ counts, responded, showTally, myResponse, canVote, onVot
 }
 
 function UnderstandCheck({ classId, date }) {
-  const { user } = useAuth();
-  const isProfessor = user?.role === "professor";
+  const { isProfessor, preview } = useClassView();
   const today   = new Date().toLocaleDateString("en-CA");
   const isToday = date === today;
 
@@ -82,7 +81,7 @@ function UnderstandCheck({ classId, date }) {
 
   const { round, tally, responded, total_students, my_response } = state;
   const isOpen    = !!round && !round.ended_at;
-  const showTally = !!round && Array.isArray(tally);
+  const showTally = !!round && Array.isArray(tally) && (isProfessor || !!round.ended_at);
   const counts    = Object.fromEntries((tally ?? []).map((r) => [r.response, r.count]));
 
   // ── Current round (today only) ─────────────────────────────────────────────
@@ -152,6 +151,7 @@ function UnderstandCheck({ classId, date }) {
 
   async function vote(key) {
     if (!isOpen || isProfessor || key === my_response) return;
+    if (preview) { setError(PREVIEW_MESSAGE); return; }
     const previous = my_response;
     setState((prev) => ({ ...prev, my_response: key }));
     setError(null);
@@ -162,6 +162,9 @@ function UnderstandCheck({ classId, date }) {
       setError(err.response?.data?.error ?? "Couldn't record your answer.");
     }
   }
+
+  // Students only get finished rounds in the day list.
+  const dayRounds = isProfessor ? history : history.filter((r) => r.ended_at);
 
   const card = "w-full rounded-lg shadow-md p-4 sm:p-6 border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700";
 
@@ -174,13 +177,13 @@ function UnderstandCheck({ classId, date }) {
           <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{longDate(date)}</span>
         </div>
 
-        {history.length === 0 ? (
+        {dayRounds.length === 0 ? (
           <p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">
             No checks were run on this day.
           </p>
         ) : (
           <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-700">
-            {history.map((r, i) => (
+            {dayRounds.map((r, i) => (
               <li key={r.id} className="py-3">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 mr-2">#{i + 1}</span>
@@ -289,11 +292,11 @@ function UnderstandCheck({ classId, date }) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
           Today's checks
         </h3>
-        {history.length === 0 ? (
+        {dayRounds.length === 0 ? (
           <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">None yet.</p>
         ) : (
           <ul className="mt-1 divide-y divide-slate-100 dark:divide-slate-700">
-            {history.map((r) => (
+            {dayRounds.map((r) => (
               <li key={r.id} className="py-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-xs">
                 <span className="std-text font-medium truncate">
                   {r.label || "Untitled check"}

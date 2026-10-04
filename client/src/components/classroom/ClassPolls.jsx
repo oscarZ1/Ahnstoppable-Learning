@@ -11,7 +11,7 @@ import { Plus, X } from "lucide-react";
 import SectionHeading from "../ui/SectionHeading";
 import api from "../../api/axios";
 import socket from "../../api/socket";
-import { useAuth } from "../../context/AuthContext";
+import { useClassView, PREVIEW_MESSAGE } from "../../context/ClassViewContext";
 
 const MAX_QUESTION = 300;
 const MAX_OPTION   = 100;
@@ -210,8 +210,7 @@ function PollResultCard({ snap, index, showNames }) {
 }
 
 function ClassPolls({ classId, date }) {
-  const { user } = useAuth();
-  const isProfessor = user?.role === "professor";
+  const { isProfessor, preview } = useClassView();
   const today   = new Date().toLocaleDateString("en-CA");
   const isToday = date === today;
 
@@ -295,6 +294,7 @@ function ClassPolls({ classId, date }) {
 
   async function vote(optionId) {
     if (!isOpen || isProfessor || optionId === my_option_id) return;
+    if (preview) { setError(PREVIEW_MESSAGE); return; }
     const previous = my_option_id;
     setState((prev) => ({ ...prev, my_option_id: optionId }));
     setError(null);
@@ -306,6 +306,9 @@ function ClassPolls({ classId, date }) {
     }
   }
 
+  // Students only get closed polls in the day list.
+  const dayPolls = isProfessor ? history : history.filter((s) => s.poll.closed_at);
+
   const card = "w-full rounded-lg shadow-md p-4 sm:p-6 border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700";
 
   // ── Past day: that day's polls as result cards, nothing live ───────────────
@@ -316,13 +319,13 @@ function ClassPolls({ classId, date }) {
           <SectionHeading text="Polls 📊" />
           <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{longDate(date)}</span>
         </div>
-        {history.length === 0 ? (
+        {dayPolls.length === 0 ? (
           <p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">
             No polls were run on this day.
           </p>
         ) : (
           <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-700">
-            {history.map((s, i) => (
+            {dayPolls.map((s, i) => (
               <PollResultCard key={s.poll.id} snap={s} index={i} showNames={isProfessor} />
             ))}
           </ul>
@@ -332,7 +335,7 @@ function ClassPolls({ classId, date }) {
   }
 
   // ── Today: live poll + today's list ────────────────────────────────────────
-  const earlier = history.filter((s) => s.poll.id !== poll?.id);
+  const earlier = dayPolls.filter((s) => s.poll.id !== poll?.id);
 
   return (
     <div className={card}>
@@ -425,7 +428,7 @@ function ClassPolls({ classId, date }) {
               <PollResultCard
                 key={s.poll.id}
                 snap={s}
-                index={history.indexOf(s)}
+                index={dayPolls.indexOf(s)}
                 showNames={isProfessor}
               />
             ))}
