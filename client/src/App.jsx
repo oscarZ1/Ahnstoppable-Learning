@@ -6,6 +6,7 @@ import Header from "./components/ui/Header";
 import SignIn from "./pages/SignIn";
 import HomeDashboard from "./pages/HomeDashboard";
 import ClassDashboard from "./pages/ClassDashboard";
+import ClassResults from "./pages/ClassResults";
 import Register from "./pages/Register";
 
 function PrivateRoute({ children }) {
@@ -27,6 +28,7 @@ function App() {
           <Route path="/home"           element={<PrivateRoute><HomeDashboard /></PrivateRoute>} />
           {/* classId comes from the URL — ClassDashboard reads it via useParams() */}
           <Route path="/class/:classId" element={<PrivateRoute><ClassDashboard /></PrivateRoute>} />
+          <Route path="/class/:classId/results" element={<PrivateRoute><ClassResults /></PrivateRoute>} />
           <Route path="*"               element={<Navigate to="/" replace />} />
         </Routes>
         </div>

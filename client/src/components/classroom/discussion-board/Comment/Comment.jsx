@@ -16,7 +16,7 @@ function Comment({
   const [showReplies, setShowReplies] = useState(false);
 
   return (
-    <div className="py-6 border-b pl-2 border-slate-200 dark:border-slate-800 last:border-0 bg-white dark:bg-slate-900 transition-colors">
+    <div data-testid="comment" className="py-6 border-b pl-2 border-slate-200 dark:border-slate-800 last:border-0 bg-white dark:bg-slate-900 transition-colors">
       <div className="flex flex-col gap-1">
         {/* Comment body */}
         <Reply name={name} date={date} text={text} />

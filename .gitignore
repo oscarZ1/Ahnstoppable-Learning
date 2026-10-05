@@ -37,3 +37,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+
+# Browser tests (e2e/)
+e2e/test-results/
+e2e/playwright-report/
+e2e/.state/

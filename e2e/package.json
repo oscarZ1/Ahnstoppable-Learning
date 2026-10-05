@@ -1,0 +1,14 @@
+{
+  "name": "ahnstoppable-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for Ahnstoppable Learning (professor and student views).",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

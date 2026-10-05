@@ -5,6 +5,7 @@
 //   GET   /api/classes/:classId/polls/current         – member: open poll (or today's latest) + my vote
 //   POST  /api/classes/:classId/polls/:pollId/votes   – student: pick an option (upsert until closed)
 //   GET   /api/classes/:classId/polls?date=           – member: polls opened that day
+//   GET   /api/classes/:classId/polls/history         – professor: every poll, all dates, with voters
 //
 // Visibility: professors always see the tally AND who picked each option.
 // Students see counts only, and only once the poll has closed. Socket events
@@ -192,6 +193,20 @@ router.get('/current', requireAuth, requireClassMember, async (req, res) => {
       my_option_id = mine[0]?.option_id ?? null;
     }
     return res.json({ ...snapshot, my_option_id });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// ── Every poll, all dates (professor Results page) ───────────────────────────
+// Declared before the /:pollId routes so "history" is never read as an id.
+router.get('/history', requireAuth, requireProfessor, requireClassMember, async (req, res) => {
+  try {
+    const polls = await selectPolls('p.class_id = $1', [req.classId], 'ORDER BY p.created_at DESC');
+    const total = await countStudents(req.classId);
+    const snapshots = await Promise.all(polls.map((p) => pollSnapshot(p, req.classId, true, total)));
+    return res.json(snapshots);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error.' });

@@ -5,6 +5,7 @@
 //   GET   /api/classes/:classId/understand/rounds?date=      – member: rounds started that day (+ tallies)
 //   POST  /api/classes/:classId/understand                  – member: vote in the open round (409 if none)
 //   GET   /api/classes/:classId/understand                  – member: current round + tally + my vote
+//   GET   /api/classes/:classId/understand/history          – professor: every round, all dates, who answered what
 //   GET   /api/classes/:classId/talents                     – member: sorted talent leaderboard
 //
 // Visibility: professors always see tallies. Students see a round's tally only
@@ -132,6 +133,32 @@ router.get('/understand/rounds', requireAuth, requireClassMember, async (req, re
       [req.classId, date, isProfessor]
     );
     return res.json(rows);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// ── Every round, all dates (professor Results page) ─────────────────────────
+router.get('/understand/history', requireAuth, requireProfessor, requireClassMember, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.id, r.label, r.started_at, r.ended_at,
+              COUNT(c.id)::int                                            AS responded,
+              COUNT(c.id) FILTER (WHERE c.response = 'thumbs_up')::int    AS thumbs_up,
+              COUNT(c.id) FILTER (WHERE c.response = 'hand')::int         AS hand,
+              COUNT(c.id) FILTER (WHERE c.response = 'thumbs_down')::int  AS thumbs_down,
+              COALESCE(json_agg(json_build_object('user_id', u.id, 'name', u.name, 'response', c.response)
+                                ORDER BY u.name) FILTER (WHERE c.id IS NOT NULL), '[]'::json) AS responses
+       FROM   understand_rounds r
+       LEFT JOIN understand_checks c ON c.round_id = r.id
+       LEFT JOIN users u             ON u.id = c.user_id
+       WHERE  r.class_id = $1
+       GROUP  BY r.id
+       ORDER  BY r.started_at DESC`,
+      [req.classId]
+    );
+    return res.json({ rounds: rows, total_students: await countStudents(req.classId) });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error.' });

@@ -1,6 +1,6 @@
 // src/components/Dashboards/ClassDashboard.jsx
 import React, { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import UnderstandCheck from "../components/classroom/UnderstandCheck";
 import ClassPolls from "../components/classroom/ClassPolls";
@@ -52,6 +52,14 @@ function ClassDashboard() {
             {isRealProfessor && (
               <div className="px-2 sm:px-3 flex flex-wrap items-center gap-2">
                 {!preview && <AnonymousToggle showNames={showNames} setShowNames={setShowNames} />}
+                {!preview && (
+                  <Link
+                    to={`/class/${classId}/results`}
+                    className="white-btn text-xs py-2 border border-slate-200 dark:border-slate-700"
+                  >
+                    📋 Results
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => setPreview((v) => !v)}

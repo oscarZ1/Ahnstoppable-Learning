@@ -19,6 +19,7 @@ function QuestionsInput({ addItem = () => {}, disabled = false }) {
       <div className="p-1">
         <textarea
           name="questions-input"
+          aria-label="Write a comment"
           rows="3"
           className="w-full p-4 std-text bg-transparent outline-none resize-none placeholder-slate-400 dark:placeholder-slate-500 font-medium"
           onChange={handleChange}
