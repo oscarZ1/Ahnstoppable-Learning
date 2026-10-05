@@ -24,9 +24,21 @@ function sslConfig() {
   return ca ? { ca: ca.replace(/\\n/g, '\n'), rejectUnauthorized: true } : { rejectUnauthorized: false };
 }
 
+// Days (what "today" is, which day a poll or check belongs to) follow the
+// class's local time, not the database server's. Hosted Postgres runs in UTC,
+// which filed anything after ~5 PM Pacific under the next day. Every
+// connection is set to APP_TIMEZONE before it's used, so CURRENT_DATE and
+// timestamptz::date match the classroom's calendar.
+const APP_TIMEZONE = process.env.APP_TIMEZONE || 'America/Los_Angeles';
+if (!/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)*$/.test(APP_TIMEZONE)) {
+  throw new Error(`APP_TIMEZONE "${APP_TIMEZONE}" is not a valid timezone name (e.g. America/Los_Angeles).`);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig(),
+  // Awaited by the pool before the connection runs any other query.
+  onConnect: (client) => client.query(`SET TIME ZONE '${APP_TIMEZONE}'`),
 });
 
 pool.on('error', (err) => {

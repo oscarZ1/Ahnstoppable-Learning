@@ -76,13 +76,15 @@ CREATE TABLE questions (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Understanding-check rounds (professor starts / ends one during class)
+-- Understanding-check rounds (professor starts / ends one during class, or
+-- prepares one ahead of time for a given day)
 CREATE TABLE understand_rounds (
-    id          SERIAL PRIMARY KEY,
-    class_id    INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-    label       TEXT,                                   -- e.g. "Slide 12: regression"
-    started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ended_at    TIMESTAMPTZ                             -- NULL while the round is open
+    id            SERIAL PRIMARY KEY,
+    class_id      INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    label         TEXT,                                 -- e.g. "Slide 12: regression"
+    scheduled_for DATE NOT NULL DEFAULT CURRENT_DATE,   -- the class day it belongs to
+    started_at    TIMESTAMPTZ DEFAULT NOW(),            -- NULL = prepared, not started yet
+    ended_at      TIMESTAMPTZ                           -- NULL while the round is open
 );
 
 -- Student responses (👍 👋 👎), one per student per round, upserted on change
@@ -96,13 +98,16 @@ CREATE TABLE understand_checks (
     UNIQUE (round_id, user_id)
 );
 
--- Polls (professor asks a question with 2–6 text options; one open per class)
+-- Polls (professor asks a question with 2–6 text options; one open per class;
+-- can be prepared ahead of time for a given day)
 CREATE TABLE polls (
-    id          SERIAL PRIMARY KEY,
-    class_id    INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-    question    TEXT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    closed_at   TIMESTAMPTZ                             -- NULL while the poll is open
+    id            SERIAL PRIMARY KEY,
+    class_id      INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    question      TEXT NOT NULL,
+    scheduled_for DATE NOT NULL DEFAULT CURRENT_DATE,   -- the class day it belongs to
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    opened_at     TIMESTAMPTZ,                          -- NULL = prepared, not started yet
+    closed_at     TIMESTAMPTZ                           -- NULL while the poll is open
 );
 
 CREATE TABLE poll_options (
@@ -132,9 +137,11 @@ CREATE INDEX idx_comments_post      ON comments(post_id);
 CREATE INDEX idx_replies_comment    ON replies(comment_id);
 CREATE INDEX idx_members_class      ON class_members(class_id);
 CREATE INDEX idx_questions_class_date ON questions(class_id, asked_date);
-CREATE UNIQUE INDEX idx_rounds_one_open_per_class ON understand_rounds(class_id) WHERE ended_at IS NULL;
+CREATE UNIQUE INDEX idx_rounds_one_open_per_class ON understand_rounds(class_id) WHERE started_at IS NOT NULL AND ended_at IS NULL;
+CREATE INDEX idx_rounds_class_day ON understand_rounds(class_id, scheduled_for);
 CREATE INDEX idx_rounds_class_started ON understand_rounds(class_id, started_at);
-CREATE UNIQUE INDEX idx_polls_one_open_per_class ON polls(class_id) WHERE closed_at IS NULL;
+CREATE UNIQUE INDEX idx_polls_one_open_per_class ON polls(class_id) WHERE opened_at IS NOT NULL AND closed_at IS NULL;
+CREATE INDEX idx_polls_class_day ON polls(class_id, scheduled_for);
 CREATE INDEX idx_polls_class_created ON polls(class_id, created_at);
 CREATE INDEX idx_poll_options_poll   ON poll_options(poll_id, position);
 CREATE INDEX idx_poll_votes_poll     ON poll_votes(poll_id);

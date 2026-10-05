@@ -11,6 +11,9 @@ export const BACKEND_DIR = path.resolve(E2E_DIR, '../backend');
 export const CLIENT_DIR  = path.resolve(E2E_DIR, '../client');
 export const STATE_FILE  = path.join(E2E_DIR, '.state', 'fixtures.json');
 
+// The class timezone the app runs with in tests (the test database is UTC).
+export const APP_TIMEZONE = 'America/Los_Angeles';
+
 export const API_PORT = 4310;
 export const WEB_PORT = 5310;
 

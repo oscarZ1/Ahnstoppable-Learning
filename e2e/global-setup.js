@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { BACKEND_DIR, STATE_FILE, testDatabaseUrl, adminDatabaseUrl } from './test-db.js';
+import { BACKEND_DIR, STATE_FILE, APP_TIMEZONE, testDatabaseUrl, adminDatabaseUrl } from './test-db.js';
 import { PROFESSOR, STUDENTS, CLASS, POST, BOB_COMMENT } from './tests/people.js';
 
 // Use the backend's own copies of pg and bcrypt.
@@ -24,11 +24,14 @@ export default async function globalSetup() {
   await admin.connect();
   await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
   await admin.query(`CREATE DATABASE "${name}"`);
+  // Like production (Supabase): the database itself runs in UTC. The app must
+  // still use the class's timezone (APP_TIMEZONE) for "today".
+  await admin.query(`ALTER DATABASE "${name}" SET timezone TO 'UTC'`);
   await admin.end();
 
   const migrate = spawnSync(process.execPath, ['scripts/migrate.js'], {
     cwd: BACKEND_DIR,
-    env: { ...process.env, DATABASE_URL: url, DATABASE_SSL: '' },
+    env: { ...process.env, DATABASE_URL: url, DATABASE_SSL: '', APP_TIMEZONE: APP_TIMEZONE },
     encoding: 'utf8',
   });
   if (migrate.status !== 0) throw new Error(`Migration failed:\n${migrate.stdout}\n${migrate.stderr}`);

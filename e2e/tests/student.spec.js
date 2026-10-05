@@ -51,7 +51,7 @@ test('a student answers an understanding check and sees results once it ends', a
   await signInStudent(page, alice);
   await openClass(page);
   const check = card(page, /Understanding Check/);
-  await expect(check.getByText('Live')).toBeVisible();
+  await expect(check.getByText('Live', { exact: true })).toBeVisible();
   await expect(check.getByText(/students responded/)).toHaveCount(0);   // no counts while it runs
 
   await check.getByRole('button', { name: 'Got it' }).click();

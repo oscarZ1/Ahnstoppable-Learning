@@ -1,6 +1,7 @@
 // src/components/classroom/ViewLogs.jsx
-// Day navigator for the discussion feed: prev / next arrows, a button that
-// opens the full-year calendar, and a "Today" shortcut.
+// Day navigator for the class page: prev / next arrows, a button that opens
+// the full-year calendar, and a "Today" shortcut. Students stop at today;
+// professors get a later maxDate so they can plan future classes.
 import React, { useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import YearCalendar, { MIN_DATE } from "./YearCalendar";
@@ -12,11 +13,11 @@ function formatLong(key) {
   });
 }
 
-function ViewLogs({ date, today, handleDate, classId }) {
+function ViewLogs({ date, today, maxDate = today, handleDate, classId }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
 
   function select(next) {
-    if (next >= MIN_DATE && next <= today) {
+    if (next >= MIN_DATE && next <= maxDate) {
       handleDate({ target: { value: next } });
     }
   }
@@ -62,7 +63,7 @@ function ViewLogs({ date, today, handleDate, classId }) {
         <button
           type="button"
           onClick={() => shiftDay(1)}
-          disabled={date >= today}
+          disabled={date >= maxDate}
           aria-label="Next day"
           className={navBtn}
         >
@@ -87,6 +88,7 @@ function ViewLogs({ date, today, handleDate, classId }) {
           classId={classId}
           selected={date}
           today={today}
+          maxDate={maxDate}
           onSelect={(next) => { select(next); setCalendarOpen(false); }}
           onClose={() => setCalendarOpen(false)}
         />

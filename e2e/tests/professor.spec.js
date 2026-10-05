@@ -54,7 +54,7 @@ test('a professor runs an understanding check and watches answers arrive', async
   const label = unique('Chapter 2 check');
   await profCheck.getByPlaceholder('What are you checking? (optional)').fill(label);
   await profCheck.getByRole('button', { name: 'Start check' }).click();
-  await expect(profCheck.getByText('Live')).toBeVisible();
+  await expect(profCheck.getByText('Live', { exact: true })).toBeVisible();
 
   await expect(stuCheck.getByText(label)).toBeVisible();
   await stuCheck.getByRole('button', { name: 'Got it' }).click();
@@ -77,13 +77,15 @@ test('a professor creates a poll, sees who voted live, and closes it', async ({ 
   await profPolls.getByPlaceholder('Option 1').fill('Branding');
   await profPolls.getByPlaceholder('Option 2').fill('Media planning');
   await profPolls.getByRole('button', { name: 'Start poll' }).click();
-  await expect(profPolls.getByText('Live')).toBeVisible();
+  await expect(profPolls.getByText('Live', { exact: true })).toBeVisible();
 
   await stuPolls.getByRole('button', { name: 'Branding' }).click();
   await expect(stuPolls.getByText('Answer recorded')).toBeVisible();
 
-  await expect(profPolls.getByText(alice.name)).toBeVisible();          // name under the bar, live
-  await expect(profPolls.getByText(/^1 of \d+ students? responded/)).toBeVisible();
+  // Her name appears under the bar live (the first match; earlier polls in the
+  // list below may also show her name).
+  await expect(profPolls.getByText(alice.name).first()).toBeVisible();
+  await expect(profPolls.getByText(/^1 of \d+ students? responded/).first()).toBeVisible();
 
   await profPolls.getByRole('button', { name: 'Close poll & show results' }).click();
   await expect(stuPolls.getByText(/Here's how the class answered/)).toBeVisible();

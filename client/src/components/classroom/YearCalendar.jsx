@@ -1,6 +1,8 @@
 // src/components/classroom/YearCalendar.jsx
-// Full-year calendar picker shown as a modal. Every day up to today is
-// clickable; days with discussion activity get a marker (hover for counts).
+// Full-year calendar picker shown as a modal. Every day up to maxDate (today
+// for students, later for professors planning ahead) is clickable; days with
+// activity get a marker (hover for counts), and days with prepared polls or
+// checks get an amber marker (professors only).
 import React, { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import api from "../../api/axios";
@@ -26,10 +28,11 @@ function activityLabel(a) {
   if (a.posts)     parts.push(`${a.posts} post${a.posts === 1 ? "" : "s"}`);
   if (a.comments)  parts.push(`${a.comments} comment${a.comments === 1 ? "" : "s"}`);
   if (a.questions) parts.push(`${a.questions} question${a.questions === 1 ? "" : "s"}`);
+  if (a.prepared)  parts.push(`${a.prepared} prepared poll${a.prepared === 1 ? "" : "s"}/check${a.prepared === 1 ? "" : "s"}`);
   return parts.join(" · ");
 }
 
-function MonthGrid({ year, month, selected, today, activity, onSelect }) {
+function MonthGrid({ year, month, selected, today, maxDate, activity, onSelect }) {
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth  = new Date(year, month + 1, 0).getDate();
   const cells = [
@@ -52,7 +55,7 @@ function MonthGrid({ year, month, selected, today, activity, onSelect }) {
           if (day === null) return <span key={`blank-${i}`} />;
 
           const key        = toKey(year, month, day);
-          const disabled   = key > today || key < MIN_DATE;
+          const disabled   = key > maxDate || key < MIN_DATE;
           const isSelected = key === selected;
           const isToday    = key === today;
           const act        = activity[key];
@@ -84,7 +87,7 @@ function MonthGrid({ year, month, selected, today, activity, onSelect }) {
               {act && (
                 <span
                   className={`absolute bottom-0.5 h-1 w-1 rounded-full ${
-                    isSelected ? "bg-white" : "bg-blue-500"
+                    isSelected ? "bg-white" : act.posts || act.comments || act.questions ? "bg-blue-500" : "bg-amber-500"
                   }`}
                 />
               )}
@@ -96,11 +99,11 @@ function MonthGrid({ year, month, selected, today, activity, onSelect }) {
   );
 }
 
-function YearCalendar({ classId, selected, today, onSelect, onClose }) {
+function YearCalendar({ classId, selected, today, maxDate = today, onSelect, onClose }) {
   const [year, setYear]         = useState(Number(selected.slice(0, 4)));
   const [activity, setActivity] = useState({});
   const [loadError, setLoadError] = useState(null);
-  const todayYear = Number(today.slice(0, 4));
+  const maxYear = Number(maxDate.slice(0, 4));
 
   // Activity markers for the visible year
   useEffect(() => {
@@ -156,7 +159,7 @@ function YearCalendar({ classId, selected, today, onSelect, onClose }) {
             <button
               type="button"
               onClick={() => setYear((y) => y + 1)}
-              disabled={year >= todayYear}
+              disabled={year >= maxYear}
               aria-label="Next year"
               className="flex items-center justify-center w-8 h-8 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-35 disabled:cursor-default dark:border-gray-700 dark:hover:bg-gray-800 transition-colors"
             >
@@ -189,6 +192,7 @@ function YearCalendar({ classId, selected, today, onSelect, onClose }) {
               month={month}
               selected={selected}
               today={today}
+              maxDate={maxDate}
               activity={activity}
               onSelect={onSelect}
             />

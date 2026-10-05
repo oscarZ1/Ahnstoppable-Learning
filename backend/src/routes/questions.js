@@ -12,6 +12,7 @@ import { requireAuth, requireProfessor, requireClassMember } from '../middleware
 import { forRequester } from '../utils/anonymity.js';
 import { emitToClass } from '../socket/emit.js';
 import { questionLimits } from '../middleware/rateLimit.js';
+import { dayStatus } from '../utils/days.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -54,6 +55,9 @@ router.post('/', requireAuth, requireClassMember, ...questionLimits, async (req,
     return res.status(400).json({ error: 'asked_date must be YYYY-MM-DD.' });
   }
   try {
+    if (asked_date != null && await dayStatus(asked_date) === 'future') {
+      return res.status(400).json({ error: "You can't ask a question for a day that hasn't happened yet." });
+    }
     const { rows } = await pool.query(
       `INSERT INTO questions (class_id, author_id, content, asked_date)
        VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE))

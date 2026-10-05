@@ -1,10 +1,19 @@
 // src/components/classroom/CreateDiscussion.jsx
-// Professor-only: create a new discussion post for today.
+// Professor-only: create a discussion post for the day being viewed — today, or
+// a future day when planning ahead (students see it once that day arrives).
 import React, { useState } from "react";
 import CourseInputTemplate from "../ui/CourseInputTemplate";
 import api from "../../api/axios";
 
-function CreateDiscussion({ classRoomId }) {
+function shortDay(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+function CreateDiscussion({ classRoomId, date }) {
+  const today    = new Date().toLocaleDateString("en-CA");
+  const postDate = date ?? today;
+  const isFuture = postDate > today;
   const [isOpen, setIsOpen]       = useState(false);
   const [title, setTitle]         = useState("");
   const [content, setContent]     = useState("");
@@ -30,8 +39,8 @@ function CreateDiscussion({ classRoomId }) {
       await api.post(`/api/classes/${classRoomId}/posts`, {
         title,
         content,
-        // Professor's local calendar day, so the post lands on their "today"
-        post_date: new Date().toLocaleDateString("en-CA"),
+        // The day being viewed, as a local calendar date
+        post_date: postDate,
       });
       // The socket event 'post:new' handled by useClassSocket updates the feed —
       // no manual state patch needed here.
@@ -51,7 +60,7 @@ function CreateDiscussion({ classRoomId }) {
           className="blue-btn"
           onClick={() => setIsOpen(true)}
         >
-          Start a New Discussion
+          {isFuture ? `Plan a Discussion for ${shortDay(postDate)}` : "Start a New Discussion"}
         </button>
       </div>
     );
@@ -113,7 +122,7 @@ function CreateDiscussion({ classRoomId }) {
             className="blue-btn"
             disabled={!title.trim() || !content.trim() || submitting}
           >
-            {submitting ? "Posting…" : "Create Discussion"}
+            {submitting ? "Posting…" : isFuture ? `Schedule for ${shortDay(postDate)}` : "Create Discussion"}
           </button>
         </div>
       </form>

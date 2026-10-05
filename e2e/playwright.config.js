@@ -1,7 +1,7 @@
 // Browser tests: a professor and students using the real site in Chrome,
 // against a throwaway local database (see test-db.js and global-setup.js).
 import { defineConfig } from '@playwright/test';
-import { API_PORT, WEB_PORT, BACKEND_DIR, CLIENT_DIR, testDatabaseUrl } from './test-db.js';
+import { API_PORT, WEB_PORT, BACKEND_DIR, CLIENT_DIR, APP_TIMEZONE, testDatabaseUrl } from './test-db.js';
 
 const API = `http://localhost:${API_PORT}`;
 const WEB = `http://localhost:${WEB_PORT}`;
@@ -19,6 +19,7 @@ export default defineConfig({
   use: {
     baseURL: WEB,
     channel: 'chrome',            // the installed Google Chrome; no browser download needed
+    timezoneId: APP_TIMEZONE,     // the browser's "today" matches the class's
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -33,6 +34,7 @@ export default defineConfig({
         PORT: String(API_PORT),
         DATABASE_URL: testDatabaseUrl(),
         DATABASE_SSL: '',
+        APP_TIMEZONE,
         JWT_SECRET: 'e2e-test-secret',
         CORS_ORIGIN: WEB,
       },

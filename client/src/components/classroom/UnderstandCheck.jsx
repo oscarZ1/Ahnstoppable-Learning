@@ -5,7 +5,9 @@
 // result once the round has ended.
 //
 // The panel is day-specific: on today it shows the live round plus today's
-// list; on any other day it shows that day's rounds as result cards only.
+// list; past days show that day's rounds as result cards. Professors can also
+// open future days and prepare checks there; a prepared check stays invisible
+// to students until the professor clicks Start on its day.
 import React, { useCallback, useEffect, useState } from "react";
 import SectionHeading from "../ui/SectionHeading";
 import api from "../../api/axios";
@@ -68,10 +70,59 @@ function TallyColumns({ counts, responded, showTally, myResponse, canVote, onVot
   );
 }
 
+function shortDate(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+// ── Prepared checks for a day (professor only) ───────────────────────────────
+function PreparedChecks({ title, rounds, canStart, startDisabledReason, onStart, onDelete, busy }) {
+  return (
+    <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">{title}</h3>
+      {rounds.length === 0 ? (
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">None prepared.</p>
+      ) : (
+        <ul className="mt-1 divide-y divide-slate-100 dark:divide-slate-700" aria-label={title}>
+          {rounds.map((r) => (
+            <li key={r.id} className="py-2 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-semibold std-text break-words">{r.label || "Untitled check"}</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="white-btn text-xs py-1.5 border border-slate-200 dark:border-slate-700"
+                  onClick={() => onDelete(r)}
+                  disabled={busy}
+                  aria-label={`Delete prepared check: ${r.label || "Untitled check"}`}
+                >
+                  Delete
+                </button>
+                {canStart && (
+                  <button
+                    type="button"
+                    className="blue-btn text-xs py-1.5"
+                    onClick={() => onStart(r)}
+                    disabled={busy || !!startDisabledReason}
+                    title={startDisabledReason ?? undefined}
+                    aria-label={`Start prepared check: ${r.label || "Untitled check"}`}
+                  >
+                    Start
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function UnderstandCheck({ classId, date }) {
   const { isProfessor, preview } = useClassView();
-  const today   = new Date().toLocaleDateString("en-CA");
-  const isToday = date === today;
+  const today    = new Date().toLocaleDateString("en-CA");
+  const isToday  = date === today;
+  const isFuture = date > today;
 
   const [state,   setState]   = useState(EMPTY);
   const [history, setHistory] = useState([]);
@@ -111,27 +162,60 @@ function UnderstandCheck({ classId, date }) {
         ...snap,
         my_response: snap.round && prev.round?.id === snap.round.id ? prev.my_response : null,
       }));
-      if (snap.round?.ended_at) loadHistory();
+      loadHistory();
     };
     const onUpdate = ({ round_id, tally, responded, total_students }) => {
       setState((prev) => (prev.round?.id === round_id ? { ...prev, tally, responded, total_students } : prev));
     };
-    socket.on("understand:round",  onRound);
-    socket.on("understand:update", onUpdate);
+    // Prepared checks changed (another professor window, or a start/delete).
+    const onPrepared = ({ date: changed }) => { if (changed === date) loadHistory(); };
+    socket.on("understand:round",    onRound);
+    socket.on("understand:update",   onUpdate);
+    socket.on("understand:prepared", onPrepared);
     return () => {
-      socket.off("understand:round",  onRound);
-      socket.off("understand:update", onUpdate);
+      socket.off("understand:round",    onRound);
+      socket.off("understand:update",   onUpdate);
+      socket.off("understand:prepared", onPrepared);
     };
-  }, [loadHistory]);
+  }, [loadHistory, date]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  async function startRound() {
+  // prepare = save it for this day instead of starting now.
+  async function startRound(prepare = false) {
     setBusy(true); setError(null);
     try {
-      await api.post(`/api/classes/${classId}/understand/rounds`, { label: label.trim() || undefined });
+      await api.post(`/api/classes/${classId}/understand/rounds`, {
+        label: label.trim() || undefined, scheduled_for: date, prepare,
+      });
       setLabel("");
+      loadHistory();
+    } catch (err) {
+      setError(err.response?.data?.error ?? (prepare ? "Couldn't save the check." : "Couldn't start the check."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startPrepared(r) {
+    setBusy(true); setError(null);
+    try {
+      await api.post(`/api/classes/${classId}/understand/rounds/${r.id}/start`);
+      loadHistory();
     } catch (err) {
       setError(err.response?.data?.error ?? "Couldn't start the check.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePrepared(r) {
+    if (!window.confirm(`Delete the prepared check "${r.label || "Untitled check"}"?`)) return;
+    setBusy(true); setError(null);
+    try {
+      await api.delete(`/api/classes/${classId}/understand/rounds/${r.id}`);
+      loadHistory();
+    } catch (err) {
+      setError(err.response?.data?.error ?? "Couldn't delete the check.");
     } finally {
       setBusy(false);
     }
@@ -163,10 +247,60 @@ function UnderstandCheck({ classId, date }) {
     }
   }
 
-  // Students only get finished rounds in the day list.
-  const dayRounds = isProfessor ? history : history.filter((r) => r.ended_at);
+  // Rounds that actually ran that day; students only get finished ones.
+  const ran       = history.filter((r) => r.started_at);
+  const dayRounds = isProfessor ? ran : ran.filter((r) => r.ended_at);
+  // Prepared, not started (professor only; the server never sends them to students).
+  const prepared  = isProfessor ? history.filter((r) => !r.started_at) : [];
+
+  const labelInput = (onEnter) => (
+    <input
+      type="text"
+      value={label}
+      onChange={(e) => setLabel(e.target.value)}
+      onKeyDown={(e) => { if (e.key === "Enter" && !busy) onEnter(); }}
+      maxLength={120}
+      placeholder="What are you checking? (optional)"
+      className="flex-1 std-text bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-3 py-2 rounded-md text-sm outline-blue-600 focus:ring-2 focus:ring-blue-500/20"
+    />
+  );
 
   const card = "w-full rounded-lg shadow-md p-4 sm:p-6 border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700";
+
+  // ── Future day (professor planning): prepared checks + a form to add more ──
+  if (isFuture) {
+    return (
+      <div className={card}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SectionHeading text="Understanding Check 🤔" />
+          <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{longDate(date)}</span>
+        </div>
+        {isProfessor ? (
+          <>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Prepare checks for this class. You'll start each one when you're ready on the day.
+            </p>
+            <div className="mt-3 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+              {labelInput(() => startRound(true))}
+              <button type="button" className="blue-btn" onClick={() => startRound(true)} disabled={busy}>
+                {busy ? "Saving…" : `Save for ${shortDate(date)}`}
+              </button>
+            </div>
+            {error && <p className="mt-2 text-center text-xs text-red-400">{error}</p>}
+            <PreparedChecks
+              title={`Prepared for ${shortDate(date)}`}
+              rounds={prepared}
+              canStart={false}
+              onDelete={deletePrepared}
+              busy={busy}
+            />
+          </>
+        ) : (
+          <p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">Nothing here yet.</p>
+        )}
+      </div>
+    );
+  }
 
   // ── Past day: that day's rounds as result cards, nothing live ──────────────
   if (!isToday) {
@@ -176,6 +310,10 @@ function UnderstandCheck({ classId, date }) {
           <SectionHeading text="Understanding Check 🤔" />
           <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{longDate(date)}</span>
         </div>
+        {prepared.length > 0 && (
+          <PreparedChecks title="Prepared but never started" rounds={prepared} canStart={false} onDelete={deletePrepared} busy={busy} />
+        )}
+        {error && <p className="mt-2 text-center text-xs text-red-400">{error}</p>}
 
         {dayRounds.length === 0 ? (
           <p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">
@@ -269,16 +407,11 @@ function UnderstandCheck({ classId, date }) {
             </button>
           ) : (
             <>
-              <input
-                type="text"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !busy) startRound(); }}
-                maxLength={120}
-                placeholder="What are you checking? (optional)"
-                className="flex-1 std-text bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-3 py-2 rounded-md text-sm outline-blue-600 focus:ring-2 focus:ring-blue-500/20"
-              />
-              <button type="button" className="blue-btn" onClick={startRound} disabled={busy}>
+              {labelInput(() => startRound(false))}
+              <button type="button" className="white-btn border border-slate-200 dark:border-slate-700" onClick={() => startRound(true)} disabled={busy}>
+                Save for later
+              </button>
+              <button type="button" className="blue-btn" onClick={() => startRound(false)} disabled={busy}>
                 {busy ? "Starting…" : "Start check"}
               </button>
             </>
@@ -287,6 +420,18 @@ function UnderstandCheck({ classId, date }) {
       )}
 
       {error && <p className="mt-2 text-center text-xs text-red-400">{error}</p>}
+
+      {isProfessor && (
+        <PreparedChecks
+          title="Prepared for today"
+          rounds={prepared}
+          canStart
+          startDisabledReason={isOpen ? "End the current check first." : null}
+          onStart={startPrepared}
+          onDelete={deletePrepared}
+          busy={busy}
+        />
+      )}
 
       <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">

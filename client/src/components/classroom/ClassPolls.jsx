@@ -5,7 +5,9 @@
 // Students vote blind and see the bars, counts only, once the poll closes.
 //
 // Day-specific like UnderstandCheck: today shows the live poll plus today's
-// list; any other day shows that day's polls as result cards only.
+// list; past days show that day's polls as result cards. Professors can also
+// open future days and prepare polls there; a prepared poll stays invisible to
+// students until the professor clicks Start on its day.
 import React, { useCallback, useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import SectionHeading from "../ui/SectionHeading";
@@ -32,6 +34,14 @@ function longDate(key) {
 }
 function plural(n, word) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+function shortDate(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+// When a poll actually started (prepared polls start later than they're made).
+function startedAt(poll) {
+  return poll.opened_at ?? poll.created_at;
 }
 
 // ── Horizontal bar graph, one bar per option ─────────────────────────────────
@@ -108,7 +118,8 @@ function OptionButtons({ options, myOptionId, onVote }) {
 }
 
 // ── Professor form: question + 2–6 answers ───────────────────────────────────
-function PollComposer({ onSubmit, busy }) {
+// mode "today": Start poll (now) or Save for later. mode "plan": save for `date`.
+function PollComposer({ onSubmit, busy, mode = "today", date }) {
   const [question, setQuestion] = useState("");
   const [options,  setOptions]  = useState(["", ""]);
 
@@ -124,9 +135,9 @@ function PollComposer({ onSubmit, busy }) {
     setOptions((prev) => (prev.length > MIN_OPTIONS ? prev.filter((_, j) => j !== i) : prev));
   }
 
-  async function submit() {
+  async function submit(prepare = mode === "plan") {
     if (!valid || busy) return;
-    const ok = await onSubmit({ question: question.trim(), options: options.map((o) => o.trim()) });
+    const ok = await onSubmit({ question: question.trim(), options: options.map((o) => o.trim()) }, { prepare });
     if (ok) { setQuestion(""); setOptions(["", ""]); }
   }
 
@@ -152,6 +163,7 @@ function PollComposer({ onSubmit, busy }) {
             value={text}
             onChange={(e) => setOption(i, e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            aria-label={`Option ${i + 1}`}
             maxLength={MAX_OPTION}
             placeholder={`Option ${i + 1}`}
             className={`flex-1 min-w-0 ${inputClass}`}
@@ -177,9 +189,20 @@ function PollComposer({ onSubmit, busy }) {
         >
           <Plus size={14} /> Add option
         </button>
-        <button type="button" className="blue-btn" onClick={submit} disabled={!valid || busy}>
-          {busy ? "Starting…" : "Start poll"}
-        </button>
+        {mode === "plan" ? (
+          <button type="button" className="blue-btn" onClick={() => submit(true)} disabled={!valid || busy}>
+            {busy ? "Saving…" : `Save for ${shortDate(date)}`}
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <button type="button" className="white-btn border border-slate-200 dark:border-slate-700" onClick={() => submit(true)} disabled={!valid || busy}>
+              Save for later
+            </button>
+            <button type="button" className="blue-btn" onClick={() => submit(false)} disabled={!valid || busy}>
+              {busy ? "Starting…" : "Start poll"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -193,7 +216,7 @@ function PollResultCard({ snap, index, showNames }) {
       <p className="text-sm text-slate-500 dark:text-slate-400">
         <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 mr-2">#{index + 1}</span>
         <span className="font-semibold std-text">{poll.question}</span>
-        {" · "}{timeOf(poll.created_at)}{poll.closed_at ? ` – ${timeOf(poll.closed_at)}` : " · live"}
+        {" · "}{timeOf(startedAt(poll))}{poll.closed_at ? ` – ${timeOf(poll.closed_at)}` : " · live"}
       </p>
       {Array.isArray(tally) && (
         <>
@@ -209,10 +232,57 @@ function PollResultCard({ snap, index, showNames }) {
   );
 }
 
+// ── Prepared polls for a day (professor only) ────────────────────────────────
+function PreparedPolls({ title, polls, canStart, startDisabledReason, onStart, onDelete, busy }) {
+  return (
+    <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">{title}</h3>
+      {polls.length === 0 ? (
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">None prepared.</p>
+      ) : (
+        <ul className="mt-1 divide-y divide-slate-100 dark:divide-slate-700" aria-label={title}>
+          {polls.map(({ poll }) => (
+            <li key={poll.id} className="py-2 flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold std-text break-words">{poll.question}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{poll.options.map((o) => o.text).join(" · ")}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="white-btn text-xs py-1.5 border border-slate-200 dark:border-slate-700"
+                  onClick={() => onDelete(poll)}
+                  disabled={busy}
+                  aria-label={`Delete prepared poll: ${poll.question}`}
+                >
+                  Delete
+                </button>
+                {canStart && (
+                  <button
+                    type="button"
+                    className="blue-btn text-xs py-1.5"
+                    onClick={() => onStart(poll)}
+                    disabled={busy || !!startDisabledReason}
+                    title={startDisabledReason ?? undefined}
+                    aria-label={`Start prepared poll: ${poll.question}`}
+                  >
+                    Start
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ClassPolls({ classId, date }) {
   const { isProfessor, preview } = useClassView();
-  const today   = new Date().toLocaleDateString("en-CA");
-  const isToday = date === today;
+  const today    = new Date().toLocaleDateString("en-CA");
+  const isToday  = date === today;
+  const isFuture = date > today;
 
   const [state,   setState]   = useState(EMPTY);
   const [history, setHistory] = useState([]);
@@ -256,24 +326,55 @@ function ClassPolls({ classId, date }) {
       setState((prev) => (prev.poll?.id === poll_id ? { ...prev, tally, responded, total_students } : prev));
       setHistory((prev) => prev.map((s) => (s.poll.id === poll_id ? { ...s, tally, responded, total_students } : s)));
     };
-    socket.on("poll:state",  onState);
-    socket.on("poll:update", onUpdate);
+    // Prepared polls changed (another professor window, or a start/delete).
+    const onPrepared = ({ date: changed }) => { if (changed === date) loadHistory(); };
+    socket.on("poll:state",    onState);
+    socket.on("poll:update",   onUpdate);
+    socket.on("poll:prepared", onPrepared);
     return () => {
-      socket.off("poll:state",  onState);
-      socket.off("poll:update", onUpdate);
+      socket.off("poll:state",    onState);
+      socket.off("poll:update",   onUpdate);
+      socket.off("poll:prepared", onPrepared);
     };
-  }, [loadHistory]);
+  }, [loadHistory, date]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  async function createPoll(body) {
+  async function createPoll(body, { prepare = false } = {}) {
     setBusy(true); setError(null);
     try {
-      const { data } = await api.post(`/api/classes/${classId}/polls`, body);
-      setState(data);
+      const { data } = await api.post(`/api/classes/${classId}/polls`, { ...body, scheduled_for: date, prepare });
+      if (data.poll.opened_at) setState(data);
+      loadHistory();
       return true;
     } catch (err) {
-      setError(err.response?.data?.error ?? "Couldn't start the poll.");
+      setError(err.response?.data?.error ?? (prepare ? "Couldn't save the poll." : "Couldn't start the poll."));
       return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startPrepared(p) {
+    setBusy(true); setError(null);
+    try {
+      const { data } = await api.post(`/api/classes/${classId}/polls/${p.id}/start`);
+      setState(data);
+      loadHistory();
+    } catch (err) {
+      setError(err.response?.data?.error ?? "Couldn't start the poll.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePrepared(p) {
+    if (!window.confirm(`Delete the prepared poll "${p.question}"?`)) return;
+    setBusy(true); setError(null);
+    try {
+      await api.delete(`/api/classes/${classId}/polls/${p.id}`);
+      loadHistory();
+    } catch (err) {
+      setError(err.response?.data?.error ?? "Couldn't delete the poll.");
     } finally {
       setBusy(false);
     }
@@ -306,10 +407,43 @@ function ClassPolls({ classId, date }) {
     }
   }
 
-  // Students only get closed polls in the day list.
-  const dayPolls = isProfessor ? history : history.filter((s) => s.poll.closed_at);
+  // Polls that actually ran that day; students only get closed ones.
+  const ran      = history.filter((s) => s.poll.opened_at);
+  const dayPolls = isProfessor ? ran : ran.filter((s) => s.poll.closed_at);
+  // Prepared, not started (professor only; the server never sends them to students).
+  const prepared = isProfessor ? history.filter((s) => !s.poll.opened_at) : [];
 
   const card = "w-full rounded-lg shadow-md p-4 sm:p-6 border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700";
+
+  // ── Future day (professor planning): prepared polls + a form to add more ───
+  if (isFuture) {
+    return (
+      <div className={card}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SectionHeading text="Polls 📊" />
+          <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{longDate(date)}</span>
+        </div>
+        {isProfessor ? (
+          <>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Prepare polls for this class. You'll start each one when you're ready on the day.
+            </p>
+            <PollComposer onSubmit={createPoll} busy={busy} mode="plan" date={date} />
+            {error && <p className="mt-2 text-center text-xs text-red-400">{error}</p>}
+            <PreparedPolls
+              title={`Prepared for ${shortDate(date)}`}
+              polls={prepared}
+              canStart={false}
+              onDelete={deletePrepared}
+              busy={busy}
+            />
+          </>
+        ) : (
+          <p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">Nothing here yet.</p>
+        )}
+      </div>
+    );
+  }
 
   // ── Past day: that day's polls as result cards, nothing live ───────────────
   if (!isToday) {
@@ -319,6 +453,10 @@ function ClassPolls({ classId, date }) {
           <SectionHeading text="Polls 📊" />
           <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{longDate(date)}</span>
         </div>
+        {prepared.length > 0 && (
+          <PreparedPolls title="Prepared but never started" polls={prepared} canStart={false} onDelete={deletePrepared} busy={busy} />
+        )}
+        {error && <p className="mt-2 text-center text-xs text-red-400">{error}</p>}
         {dayPolls.length === 0 ? (
           <p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">
             No polls were run on this day.
@@ -354,7 +492,7 @@ function ClassPolls({ classId, date }) {
         <>
           <p className="mt-2 text-lg std-text break-words">{poll.question}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            started {timeOf(poll.created_at)}
+            started {timeOf(startedAt(poll))}
             {poll.closed_at && ` · closed ${timeOf(poll.closed_at)}`}
           </p>
         </>
@@ -386,9 +524,18 @@ function ClassPolls({ classId, date }) {
                   New poll
                 </h3>
               )}
-              <PollComposer onSubmit={createPoll} busy={busy} />
+              <PollComposer onSubmit={createPoll} busy={busy} mode="today" date={date} />
             </div>
           )}
+          <PreparedPolls
+            title="Prepared for today"
+            polls={prepared}
+            canStart
+            startDisabledReason={isOpen ? "Close the current poll first." : null}
+            onStart={startPrepared}
+            onDelete={deletePrepared}
+            busy={busy}
+          />
         </>
       )}
 

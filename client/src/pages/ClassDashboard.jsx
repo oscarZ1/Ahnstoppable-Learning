@@ -32,9 +32,24 @@ function ClassDashboard() {
 
   const today = new Date().toLocaleDateString("en-CA");
   const [viewDate, setViewDate] = useState(today);
+  // Professors can plan ahead (through the end of next year); students, and
+  // professors previewing the student view, stop at today.
+  const maxDate  = isProfessorView ? `${Number(today.slice(0, 4)) + 1}-12-31` : today;
+  const isFuture = viewDate > today;
 
   function handleDate(event) {
     setViewDate(event.target.value);
+  }
+
+  function togglePreview() {
+    // Students can't see future days, so the preview starts from today.
+    if (!preview && viewDate > today) setViewDate(today);
+    setPreview((v) => !v);
+  }
+
+  function longDay(key) {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   }
 
   return (
@@ -47,7 +62,7 @@ function ClassDashboard() {
           {/* Date navigator, with the professor's name toggle off to the side */}
           <div className="w-full flex flex-wrap items-center justify-between gap-2">
             <div className="overflow-x-auto">
-              <ViewLogs date={viewDate} today={today} handleDate={handleDate} classId={classId} />
+              <ViewLogs date={viewDate} today={today} maxDate={maxDate} handleDate={handleDate} classId={classId} />
             </div>
             {isRealProfessor && (
               <div className="px-2 sm:px-3 flex flex-wrap items-center gap-2">
@@ -62,7 +77,7 @@ function ClassDashboard() {
                 )}
                 <button
                   type="button"
-                  onClick={() => setPreview((v) => !v)}
+                  onClick={togglePreview}
                   aria-pressed={preview}
                   className={preview ? "blue-btn text-xs py-2" : "white-btn text-xs py-2 border border-slate-200 dark:border-slate-700"}
                 >
@@ -76,6 +91,13 @@ function ClassDashboard() {
             <div role="status" className="w-full sm:w-3/4 max-w-2xl rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
               <span className="font-semibold">Viewing as a student.</span>{" "}
               This is what students see in this class. Votes, questions and comments are turned off while you preview.
+            </div>
+          )}
+
+          {isProfessorView && isFuture && (
+            <div role="status" className="w-full sm:w-3/4 max-w-2xl rounded-lg border border-blue-200 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/10 px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
+              <span className="font-semibold">Planning {longDay(viewDate)}.</span>{" "}
+              Students can't see this day until it arrives. Prepare polls, checks and discussions here, then start them in class.
             </div>
           )}
 
@@ -95,9 +117,10 @@ function ClassDashboard() {
           </div>
 
           {/* Professor controls */}
-          {isProfessorView && (
+          {/* New discussions go on today or a planned future day, not past days */}
+          {isProfessorView && viewDate >= today && (
             <div className="w-full sm:w-3/4 max-w-2xl">
-              <CreateDiscussion classRoomId={classId} />
+              <CreateDiscussion key={viewDate} classRoomId={classId} date={viewDate} />
             </div>
           )}
 
