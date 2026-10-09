@@ -14,6 +14,7 @@ import SectionHeading from "../ui/SectionHeading";
 import api from "../../api/axios";
 import socket from "../../api/socket";
 import { useClassView, PREVIEW_MESSAGE } from "../../context/ClassViewContext";
+import { todayKey } from "../../utils/dates";
 
 const MAX_QUESTION = 300;
 const MAX_OPTION   = 100;
@@ -280,7 +281,7 @@ function PreparedPolls({ title, polls, canStart, startDisabledReason, onStart, o
 
 function ClassPolls({ classId, date }) {
   const { isProfessor, preview } = useClassView();
-  const today    = new Date().toLocaleDateString("en-CA");
+  const today    = todayKey();
   const isToday  = date === today;
   const isFuture = date > today;
 

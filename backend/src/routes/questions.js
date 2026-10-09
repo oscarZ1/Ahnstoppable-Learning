@@ -12,7 +12,7 @@ import { requireAuth, requireProfessor, requireClassMember } from '../middleware
 import { forRequester } from '../utils/anonymity.js';
 import { emitToClass } from '../socket/emit.js';
 import { questionLimits } from '../middleware/rateLimit.js';
-import { dayStatus } from '../utils/days.js';
+import { dayStatus, isValidDay } from '../utils/days.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -48,16 +48,20 @@ router.get('/', requireAuth, requireClassMember, async (req, res) => {
 // ── Ask a question ────────────────────────────────────────────────────────────
 router.post('/', requireAuth, requireClassMember, ...questionLimits, async (req, res) => {
   const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
-  const { asked_date } = req.body;
+  // A question is always asked "today" (in the class timezone). The browser
+  // sends its local date; if that's unreadable (some browsers format dates
+  // differently) or not today, use the class's today instead of rejecting it.
+  let asked_date = req.body.asked_date ?? null;
+  if (asked_date !== null && !isValidDay(String(asked_date))) {
+    console.warn(`questions: unreadable asked_date ${JSON.stringify(asked_date)} from user ${req.user.id}; using today`);
+    asked_date = null;
+  }
   if (!content) return res.status(400).json({ error: 'content is required.' });
   if (content.length > MAX_LEN) return res.status(400).json({ error: `content must be ${MAX_LEN} characters or fewer.` });
-  if (asked_date != null && !ISO_DATE.test(String(asked_date))) {
-    return res.status(400).json({ error: 'asked_date must be YYYY-MM-DD.' });
-  }
   try {
-    if (asked_date != null && await dayStatus(asked_date) === 'future') {
-      return res.status(400).json({ error: "You can't ask a question for a day that hasn't happened yet." });
-    }
+    // A device set to another timezone (or a wrong clock) can be a day off;
+    // the question still belongs to the class's today.
+    if (asked_date != null && await dayStatus(asked_date) !== 'today') asked_date = null;
     const { rows } = await pool.query(
       `INSERT INTO questions (class_id, author_id, content, asked_date)
        VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE))

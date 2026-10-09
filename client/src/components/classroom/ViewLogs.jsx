@@ -5,6 +5,7 @@
 import React, { useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import YearCalendar, { MIN_DATE } from "./YearCalendar";
+import { dateKey } from "../../utils/dates";
 
 function formatLong(key) {
   const [y, m, d] = key.split("-").map(Number);
@@ -25,7 +26,7 @@ function ViewLogs({ date, today, maxDate = today, handleDate, classId }) {
   function shiftDay(delta) {
     // Work in local calendar days; toISOString() would shift by the UTC offset.
     const [y, m, d] = date.split("-").map(Number);
-    select(new Date(y, m - 1, d + delta).toLocaleDateString("en-CA"));
+    select(dateKey(new Date(y, m - 1, d + delta)));
   }
 
   const navBtn = `flex items-center justify-center w-8 h-8 border border-gray-200 rounded-lg

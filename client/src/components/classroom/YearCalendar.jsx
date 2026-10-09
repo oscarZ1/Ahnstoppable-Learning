@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import api from "../../api/axios";
+import { dateKey } from "../../utils/dates";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -19,7 +20,7 @@ const MIN_YEAR = Number(MIN_DATE.slice(0, 4));
 
 // Local-calendar 'YYYY-MM-DD' for a (year, monthIndex, day) triple.
 function toKey(year, month, day) {
-  return new Date(year, month, day).toLocaleDateString("en-CA");
+  return dateKey(new Date(year, month, day));
 }
 
 function activityLabel(a) {

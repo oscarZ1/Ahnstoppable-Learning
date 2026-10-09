@@ -5,6 +5,14 @@ import pool from '../db/pool.js';
 
 export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+// A real calendar day in YYYY-MM-DD form ("2026-02-30" and "10/8/2026" are not).
+export function isValidDay(value) {
+  if (typeof value !== 'string' || !ISO_DATE.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
 // 'past' | 'today' | 'future' for a YYYY-MM-DD date (null means today).
 export async function dayStatus(date) {
   const { rows: [{ status }] } = await pool.query(

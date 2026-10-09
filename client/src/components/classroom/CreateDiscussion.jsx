@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import CourseInputTemplate from "../ui/CourseInputTemplate";
 import api from "../../api/axios";
+import { todayKey } from "../../utils/dates";
 
 function shortDay(key) {
   const [y, m, d] = key.split("-").map(Number);
@@ -11,7 +12,7 @@ function shortDay(key) {
 }
 
 function CreateDiscussion({ classRoomId, date }) {
-  const today    = new Date().toLocaleDateString("en-CA");
+  const today    = todayKey();
   const postDate = date ?? today;
   const isFuture = postDate > today;
   const [isOpen, setIsOpen]       = useState(false);

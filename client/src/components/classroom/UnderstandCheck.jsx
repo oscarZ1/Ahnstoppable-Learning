@@ -13,6 +13,7 @@ import SectionHeading from "../ui/SectionHeading";
 import api from "../../api/axios";
 import socket from "../../api/socket";
 import { useClassView, PREVIEW_MESSAGE } from "../../context/ClassViewContext";
+import { todayKey } from "../../utils/dates";
 
 const RESPONSES = [
   { key: "thumbs_down", emoji: "👎", label: "Lost",     bg: "bg-red-500",    active: "active:bg-red-400"    },
@@ -120,7 +121,7 @@ function PreparedChecks({ title, rounds, canStart, startDisabledReason, onStart,
 
 function UnderstandCheck({ classId, date }) {
   const { isProfessor, preview } = useClassView();
-  const today    = new Date().toLocaleDateString("en-CA");
+  const today    = todayKey();
   const isToday  = date === today;
   const isFuture = date > today;
 

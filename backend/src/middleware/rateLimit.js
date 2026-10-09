@@ -58,11 +58,15 @@ export async function clearStudentLockout(userId) {
 // Two windows per student: a short one that stops bursts and an hourly one that
 // stops a slow drip. Counted per signed-in user (never per IP, since a class
 // shares one), so it must come after requireAuth. Professors are exempt.
-// Every request counts, so deleting and re-posting doesn't reset anything.
+// Only posts that actually went through count: a rejected attempt (bad input,
+// a server error, or this limiter's own "too many") gives its slot back, so a
+// student can't be locked out by errors they didn't cause. Deleting a post
+// doesn't give a slot back, so delete-and-repost still counts.
 export function contentLimits({ name, perMinute, perHour, what }) {
   const shared = {
     keyGenerator: (req) => `${name}:${req.user.id}`,
     skip: (req) => req.user?.role === 'professor',
+    skipFailedRequests: true,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
   };
@@ -83,5 +87,5 @@ export function contentLimits({ name, perMinute, perHour, what }) {
 }
 
 // Comments and replies share one budget: both are discussion posts.
-export const questionLimits   = contentLimits({ name: 'questions',  perMinute: 3, perHour: 20, what: 'questions' });
+export const questionLimits   = contentLimits({ name: 'questions',  perMinute: 5, perHour: 30, what: 'questions' });
 export const discussionLimits = contentLimits({ name: 'discussion', perMinute: 6, perHour: 60, what: 'comments and replies' });

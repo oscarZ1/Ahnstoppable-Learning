@@ -14,6 +14,7 @@ import StudentQuestions from "../components/classroom/StudentQuestions";
 import { useAuth } from "../context/AuthContext";
 import { ClassViewContext } from "../context/ClassViewContext";
 import { useClassRoom } from "../hooks/useClassRoom";
+import { todayKey } from "../utils/dates";
 
 function ClassDashboard() {
   // classId comes from the route: <Route path="/class/:classId" element={<ClassDashboard />} />
@@ -30,7 +31,7 @@ function ClassDashboard() {
   // (DiscussionFeed, UnderstandCheck, ClassPolls) only subscribe to events.
   useClassRoom(classId);
 
-  const today = new Date().toLocaleDateString("en-CA");
+  const today = todayKey();
   const [viewDate, setViewDate] = useState(today);
   // Professors can plan ahead (through the end of next year); students, and
   // professors previewing the student view, stop at today.

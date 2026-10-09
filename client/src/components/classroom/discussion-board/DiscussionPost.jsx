@@ -83,12 +83,10 @@ function DiscussionPost({ post, setPosts, showNames }) {
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           {post.content}
         </p>
+        {/* Just the professor's name: the time it was written isn't meaningful
+            (discussions are often prepared before class). */}
         <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
-          {post.author_name} ·{" "}
-          {new Date(post.created_at).toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
+          {post.author_name}
         </p>
       </div>
 
