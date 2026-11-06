@@ -1,7 +1,9 @@
 // src/components/classroom/QuestionSummary.jsx
 // Professor-only AI summary of the viewed day's student questions. Created on
 // demand ("Summarize questions"), saved on the server, and shown again when the
-// day is reopened; "Refresh" re-runs it, e.g. after new questions arrive.
+// day is reopened; "Refresh" re-runs it, e.g. after new questions arrive (the
+// server skips the AI call when nothing changed). When the AI service says how
+// long to wait, the button counts down until then.
 import React, { useEffect, useState } from "react";
 import api from "../../api/axios";
 
@@ -28,11 +30,25 @@ function QuestionSummary({ classId, date, questionCount }) {
   const [data,  setData]  = useState(null);   // { summary, current_question_count, configured }
   const [busy,  setBusy]  = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [waitUntil, setWaitUntil] = useState(0);  // ms timestamp; 0 = no wait
+  const [now, setNow] = useState(() => Date.now());
+
+  // Tick once a second while a wait is running.
+  useEffect(() => {
+    if (!waitUntil) return;
+    const timer = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= waitUntil) { setWaitUntil(0); setError(null); }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [waitUntil]);
 
   useEffect(() => {
     if (!classId || !date) return;
     let ignore = false;
-    setData(null); setError(null);
+    setData(null); setError(null); setNotice(null);
     api.get(`/api/classes/${classId}/questions/summary`, { params: { date } })
       .then((res) => { if (!ignore) setData(res.data); })
       .catch((err) => { if (!ignore) console.error("Failed to load the question summary:", err); });
@@ -40,17 +56,27 @@ function QuestionSummary({ classId, date, questionCount }) {
   }, [classId, date]);
 
   async function summarize() {
-    if (busy) return;
-    setBusy(true); setError(null);
+    if (busy || waiting) return;
+    setBusy(true); setError(null); setNotice(null);
     try {
       const { data: fresh } = await api.post(`/api/classes/${classId}/questions/summary`, { date });
       setData(fresh);
+      if (fresh.unchanged) setNotice("Nothing has changed since this summary, so it wasn't run again.");
     } catch (err) {
       setError(err.response?.data?.error ?? "Couldn't summarize the questions.");
+      const retryAfter = Number(err.response?.data?.retry_after);
+      if (retryAfter > 0) {
+        const t = Date.now();
+        setNow(t);
+        setWaitUntil(t + retryAfter * 1000);
+      }
     } finally {
       setBusy(false);
     }
   }
+
+  const waitSeconds = waitUntil ? Math.max(0, Math.ceil((waitUntil - now) / 1000)) : 0;
+  const waiting = waitSeconds > 0;
 
   if (!data) return null;
   const saved      = data.summary;
@@ -64,9 +90,9 @@ function QuestionSummary({ classId, date, questionCount }) {
           type="button"
           className="white-btn text-xs py-1.5 border border-slate-200 dark:border-slate-700"
           onClick={summarize}
-          disabled={busy || questionCount === 0 || !configured}
+          disabled={busy || waiting || questionCount === 0 || !configured}
         >
-          {busy ? "Summarizing…" : "✨ Summarize questions"}
+          {busy ? "Summarizing…" : waiting ? `Try again in ${waitSeconds}s` : "✨ Summarize questions"}
         </button>
         <span className="text-xs text-slate-400 dark:text-slate-500">
           {!configured
@@ -128,12 +154,15 @@ function QuestionSummary({ classId, date, questionCount }) {
           type="button"
           className={`${newSince > 0 ? "blue-btn" : "white-btn border border-slate-200 dark:border-slate-700"} text-xs py-1.5`}
           onClick={summarize}
-          disabled={busy || !configured}
+          disabled={busy || waiting || !configured}
         >
-          {busy ? "Summarizing…" : newSince > 0 ? `Refresh (${plural(newSince, "new question")})` : "Refresh"}
+          {busy ? "Summarizing…"
+            : waiting ? `Try again in ${waitSeconds}s`
+            : newSince > 0 ? `Refresh (${plural(newSince, "new question")})` : "Refresh"}
         </button>
       </div>
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {notice && !error && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{notice}</p>}
     </section>
   );
 }

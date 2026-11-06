@@ -89,15 +89,10 @@ router.get('/summary', requireAuth, requireProfessor, requireClassMember, requir
   const { date, error } = summaryDate(req.query.date);
   if (error) return res.status(400).json({ error });
   try {
-    const { rows } = await pool.query(
-      `SELECT summary, question_count, model, created_at, summary_date
-       FROM   question_summaries
-       WHERE  class_id = $1 AND summary_date = COALESCE($2::date, CURRENT_DATE)`,
-      [req.classId, date]
-    );
+    const saved = await savedSummary(req.classId, date);
     const current = await dayQuestions(req.classId, date);
     return res.json({
-      summary: rows[0] ?? null,
+      summary: saved,
       current_question_count: current.length,
       configured: summariesConfigured(),
     });
@@ -107,28 +102,72 @@ router.get('/summary', requireAuth, requireProfessor, requireClassMember, requir
   }
 });
 
+// The saved summary covers exactly these questions (same text, same order). Answering
+// a question doesn't change what the AI sees, so it doesn't need a new summary.
+function coversSameQuestions(saved, questions) {
+  const covered = saved?.summary?.questions;
+  return Array.isArray(covered) && covered.length === questions.length
+    && covered.every((q, i) => q.content === questions[i].content);
+}
+
+async function savedSummary(classId, date) {
+  const { rows } = await pool.query(
+    `SELECT summary, question_count, model, created_at, summary_date
+     FROM   question_summaries
+     WHERE  class_id = $1 AND summary_date = COALESCE($2::date, CURRENT_DATE)`,
+    [classId, date]
+  );
+  return rows[0] ?? null;
+}
+
+// Summaries being made right now, by class and day, so a double-click or a
+// second tab shares one AI call instead of starting another.
+const inFlight = new Map();
+
+// Make (or reuse) the day's summary. Returns { summary, current_question_count, unchanged }.
+async function makeSummary(classId, date, userId) {
+  const questions = await dayQuestions(classId, date);
+  const saved = await savedSummary(classId, date);
+  if (saved && coversSameQuestions(saved, questions)) {
+    return { summary: saved, current_question_count: questions.length, unchanged: true };
+  }
+  const { summary, model } = await summarizeQuestions(questions);
+  const stored = {
+    ...summary,
+    questions: questions.map((q, i) => ({ number: i + 1, content: q.content, answered: q.answered })),
+  };
+  const { rows } = await pool.query(
+    `INSERT INTO question_summaries (class_id, summary_date, summary, question_count, model, created_by)
+     VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4, $5, $6)
+     ON CONFLICT (class_id, summary_date) DO UPDATE
+       SET summary = EXCLUDED.summary, question_count = EXCLUDED.question_count,
+           model = EXCLUDED.model, created_by = EXCLUDED.created_by, created_at = NOW()
+     RETURNING summary, question_count, model, created_at, summary_date`,
+    [classId, date, JSON.stringify(stored), questions.length, model, userId]
+  );
+  return { summary: rows[0], current_question_count: questions.length, unchanged: false };
+}
+
 router.post('/summary', requireAuth, requireProfessor, requireClassMember, requireClassOwner, summaryLimit, async (req, res) => {
   const { date, error } = summaryDate(req.body.date);
   if (error) return res.status(400).json({ error });
+  const key = `${req.classId}:${date ?? 'today'}`;
   try {
-    const questions = await dayQuestions(req.classId, date);
-    const { summary, model } = await summarizeQuestions(questions);
-    const stored = {
-      ...summary,
-      questions: questions.map((q, i) => ({ number: i + 1, content: q.content, answered: q.answered })),
-    };
-    const { rows } = await pool.query(
-      `INSERT INTO question_summaries (class_id, summary_date, summary, question_count, model, created_by)
-       VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4, $5, $6)
-       ON CONFLICT (class_id, summary_date) DO UPDATE
-         SET summary = EXCLUDED.summary, question_count = EXCLUDED.question_count,
-             model = EXCLUDED.model, created_by = EXCLUDED.created_by, created_at = NOW()
-       RETURNING summary, question_count, model, created_at, summary_date`,
-      [req.classId, date, JSON.stringify(stored), questions.length, model, req.user.id]
-    );
-    return res.status(201).json({ summary: rows[0], current_question_count: questions.length, configured: true });
+    let job = inFlight.get(key);
+    const joined = Boolean(job);
+    if (!job) {
+      job = makeSummary(req.classId, date, req.user.id).finally(() => inFlight.delete(key));
+      inFlight.set(key, job);
+    }
+    const result = await job;
+    // Reusing a summary didn't call the AI, so it doesn't count toward summaryLimit.
+    if (joined || result.unchanged) res.locals.summaryReused = true;
+    return res.status(result.unchanged ? 200 : 201).json({ ...result, configured: true });
   } catch (err) {
-    if (err instanceof SummaryError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof SummaryError) {
+      if (err.retryAfter) res.set('Retry-After', String(err.retryAfter));
+      return res.status(err.status).json({ error: err.message, retry_after: err.retryAfter });
+    }
     console.error(err);
     return res.status(500).json({ error: 'Server error.' });
   }

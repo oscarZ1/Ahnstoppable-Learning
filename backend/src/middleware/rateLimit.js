@@ -92,7 +92,9 @@ export const summaryLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: Number(process.env.SUMMARIES_PER_HOUR ?? 10),
   keyGenerator: (req) => `summaries:${req.user.id}`,
+  // Failed calls, and saved summaries returned without calling the AI, don't count.
   skipFailedRequests: true,
+  requestWasSuccessful: (_req, res) => res.statusCode < 400 && !res.locals.summaryReused,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   handler: tooMany("You've made 10 AI summaries in the last hour. Please try again later."),

@@ -44,7 +44,10 @@ export default defineConfig({
         JWT_SECRET: 'e2e-test-secret',
         GEMINI_API_KEY: 'test-key',
         GEMINI_BASE_URL: `http://localhost:${FAKE_GEMINI_PORT}`,
-        GEMINI_MODEL: '',
+        GEMINI_MODEL: '',               // the defaults, whatever is in your shell
+        GEMINI_FALLBACK_MODEL: '',
+        GEMINI_THINKING_LEVEL: '',
+        GEMINI_OVERLOAD_SKIP_SECONDS: '',
         CORS_ORIGIN: WEB,
       },
     },
