@@ -1,0 +1,4 @@
+# Minimal Supabase CLI config so `supabase db push` recognizes this folder.
+# Migrations live in supabase/migrations; see supabase/README.md.
+# Deploys use --db-url, so the project doesn't need to be linked.
+project_id = "ahnstoppable-learning"

@@ -1,6 +1,13 @@
 # Ahnstoppable-Learning
 Discussion Board App for Class
 
+## Database schema
+
+The schema lives in [`supabase/migrations`](supabase/README.md). GitHub Actions
+applies new migrations to production (Supabase) when they're merged to `main`;
+locally, `cd backend && npm run migrate` applies them. See
+[`supabase/README.md`](supabase/README.md) for how to change the schema.
+
 ## Known risks
 
 **First-time account claiming.** Students sign in by picking their class and

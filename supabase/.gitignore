@@ -1,0 +1,4 @@
+# Supabase CLI local files (not part of the schema)
+.branches
+.temp
+.env

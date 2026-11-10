@@ -1,0 +1,91 @@
+# Apply supabase/migrations to the production database (Supabase).
+#
+#   Pull requests:  check that every migration applies to an empty Postgres and
+#                   that the baseline is idempotent.
+#   Push to main:   the same check, then apply new migrations to production.
+#   Manual run:     Actions > "Supabase migrations" > Run workflow.
+#
+# Required repository secret (Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL   Supabase "Session pooler" connection string (port 5432),
+#                     the same secret db-backup.yml uses
+#
+# Optional: create a "production" environment with required reviewers so each
+# deploy waits for approval. See supabase/README.md.
+name: Supabase migrations
+
+on:
+  pull_request:
+    paths: ['supabase/migrations/**']
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-migrations
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.1.0   # pinned: CLI changes (e.g. --db-url was replaced by --remote) can't break deploys
+
+      - name: Apply all migrations to an empty database
+        # --yes: CI can't answer the CLI's "apply N migrations?" prompt
+        run: supabase db push --remote="$DB_URL" --yes
+
+      - name: Run the baseline again (must be idempotent)
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261109000000_baseline.sql
+
+      - name: Show the result
+        run: |
+          psql "$DB_URL" -c "SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version"
+          psql "$DB_URL" -c "SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
+
+  deploy:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: Check the secret is set
+        run: |
+          [ -n "$SUPABASE_DB_URL" ] || { echo "::error::SUPABASE_DB_URL secret is not set"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.1.0   # pinned: CLI changes (e.g. --db-url was replaced by --remote) can't break deploys
+
+      - name: Migrations that will run (dry run)
+        run: supabase db push --remote="$SUPABASE_DB_URL" --dry-run
+
+      - name: Apply migrations to production
+        run: supabase db push --remote="$SUPABASE_DB_URL" --yes

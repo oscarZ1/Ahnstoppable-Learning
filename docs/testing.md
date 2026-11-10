@@ -39,7 +39,8 @@ npm test
 ## How it works
 
 - Each run drops and rebuilds a separate database called `ahnstoppable_test` on
-  your local Postgres, using the same migration runner as production, then adds a
+  your local Postgres from the same `supabase/migrations` files production uses
+  (via `backend/scripts/migrate.js`), then adds a
   test professor (`prof@test.local`), the class "TEST 101 · E2E", three students
   and one discussion post. Your real local data and production are never touched.
 - The tests refuse to run unless that database is on `localhost` and its name ends
