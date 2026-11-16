@@ -24,6 +24,7 @@ Understanding Check
 Polls
 - The professor opens a poll with 2 to 6 answers. Pick one; you can change it until the poll closes.
 - Students see the bars and counts after the poll closes, never who voted for what. Your professor sees the names.
+- Some polls have a correct answer. Once the poll closes, it's marked "Correct" and you're told whether your pick was right. Opinion polls have no correct answer.
 
 Questions card
 - Ask a question at any time (up to 300 characters). Classmates see it as anonymous; your professor sees your name and may write an answer.
@@ -62,14 +63,14 @@ Days and planning
 
 Running class
 - Discussion: create a discussion post for the day you're viewing. Students comment and reply; you see their names, classmates see "Anonymous".
-- Polls: write a question with 2 to 6 answers and open it; one poll can be open at a time. You see live bars with who picked what; students see counts only after you close it.
+- Polls: write a question with 2 to 6 answers and open it; one poll can be open at a time. You see live bars with who picked what; students see counts only after you close it. To make it a quiz question, mark the correct answer with the ✓ button next to it, or pick it later from the "Correct answer" menu under the poll (also on past polls); students only see it once the poll is closed, along with whether they got it right. Leave it unmarked for an opinion poll.
 - Understanding checks: start a round (optionally labelled), students pick 👎 👋 👍, and you see live counts; end it to show students the result. One check can run at a time.
 - Questions: answer students' questions (you can edit or remove an answer), and delete questions that shouldn't be there. "Summarize questions" makes an AI overview of the day's questions; you also get "Ideas for next class", which students don't see.
 - The "Student names" switch shows or hides names on your screen (handy when projecting). "View as student" shows the page exactly as students see it; nothing you do there is sent.
 
 Results
-- The Results page (📋 Results) lists every poll and understanding check across all days, with who answered what, and downloads each student's answers as a CSV (for example for participation grades).
+- The Results page (📋 Results) lists every poll and understanding check across all days, with who answered what (and, for polls with a correct answer, how many got it right), and downloads each student's answers as a CSV with a "Correct?" column (for example for participation or quiz grades).
 
 Study assistant settings
-- The Study Assistant card on the class page turns course help on or off for students, and takes your instructions (which the assistant follows first, for example "don't solve the weekly problem sets") and course notes. It also shows an anonymous AI summary of what students asked the assistant on a day.
+- Course help settings are in the corner assistant: open it on (or pick) a class you teach and click the sliders button next to the gear. There you turn course help on or off for students, and takes your instructions (which the assistant follows first, for example "don't solve the weekly problem sets") and course notes. It also shows an anonymous AI summary of what students asked the assistant on a day.
 - You can use the assistant yourself from the corner button on any page, including in your own classes whether or not course help is on for students. Your messages are never part of the students' summary.`;

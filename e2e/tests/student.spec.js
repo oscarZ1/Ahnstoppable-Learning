@@ -83,6 +83,6 @@ test('a student votes in a poll, can change the vote, and sees results without n
 
   await server.closePoll(prof, poll.id);
   await expect(polls.getByText(/Here's how the class answered/)).toBeVisible();
-  await expect(polls.getByText('Your pick')).toBeVisible();
+  await expect(polls.getByText('Your pick').first()).toBeVisible();   // the live poll comes first; earlier polls show their picks too
   await expect(polls.getByText(alice.name)).toHaveCount(0);   // students never see who voted
 });

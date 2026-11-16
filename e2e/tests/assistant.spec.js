@@ -31,7 +31,13 @@ const send = (token, content) => call('POST', `${base()}/messages`, token, { con
 const fakeRequests = async () => (await fetch(`${FAKE}/__requests`)).json();
 const setFakeMode  = (mode, options = {}) => fetch(`${FAKE}/__mode`, { method: 'POST', body: JSON.stringify({ mode, ...options }) });
 const sentText = (request) => JSON.stringify(request.body.contents) + JSON.stringify(request.body.systemInstruction);
-const assistantCard = (page) => card(page, /Study Assistant/);
+// The professor's course-help settings, in the corner panel on their class page.
+async function courseSettings(page) {
+  const panel = await openAssistant(page);
+  await panel.getByRole('button', { name: 'Course help settings' }).click();
+  await expect(panel.getByRole('heading', { name: 'Course help settings' })).toBeVisible();
+  return panel;
+}
 
 function localDateKey(offsetDays = 0) {
   const d = new Date();
@@ -85,16 +91,18 @@ test('the professor turns it on with notes; a student chats, and the chat surviv
   const profPage = await (await browser.newContext()).newPage();
   await signInProfessor(profPage);
   await openClass(profPage);
-  const settings = assistantCard(profPage);
+  // No Study Assistant card on the class page any more: it's in the corner panel
+  await expect(card(profPage, /Study Assistant/)).toHaveCount(0);
+  const settings = await courseSettings(profPage);
   await expect(settings.getByRole('switch')).not.toBeChecked();
   await settings.getByRole('switch').check();
   await settings.getByLabel('Instructions for the assistant').fill(INSTRUCTIONS);
   await settings.getByLabel('Course notes').fill(NOTES);
   await settings.getByRole('button', { name: 'Save settings' }).click();
   await expect(settings.getByText('Saved. Students can use the study assistant.')).toBeVisible();
-  // No chat in the card: the professor uses the corner button like everyone
-  await expect(settings.getByRole('log')).toHaveCount(0);
-  await expect(settings.getByLabel('Message the study assistant')).toHaveCount(0);
+  // Back to the chat from the settings
+  await settings.getByRole('button', { name: 'Back to the chat' }).click();
+  await expect(settings.getByLabel('Message the study assistant')).toBeVisible();
 
   const page = await (await browser.newContext()).newPage();
   await signInStudent(page, alice);
@@ -276,7 +284,8 @@ test("the professor's summary of assistant questions is anonymous and leaves out
 
   await signInProfessor(page);
   await openClass(page);
-  const settings = assistantCard(page);
+  const settings = await courseSettings(page);
+  await expect(settings.getByLabel('Day to summarize')).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
   const before = (await fakeRequests()).length;
   await settings.getByRole('button', { name: '✨ Summarize assistant questions' }).click();
   const summary = settings.getByRole('region', { name: 'AI summary of study-assistant questions' });

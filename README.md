@@ -38,7 +38,8 @@ fallback model), and it also knows:
   `PROFESSOR_GUIDE` for professors: roster, planning days, results, settings);
   update it when a feature changes.
 - **Course material** in a class: **off by default**. The class's professor
-  turns it on in the "Study Assistant" card on the class page, and can give it
+  turns it on under "Course help settings" (the sliders button in the corner
+  panel, shown for a class they teach), and can give it
   instructions (which take priority over what the student asks, e.g. "don't
   solve the problem sets") and course notes there. When it's off, students'
   panel quietly gives general help instead. The class's own professor always

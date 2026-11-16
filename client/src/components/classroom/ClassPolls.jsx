@@ -8,8 +8,13 @@
 // list; past days show that day's polls as result cards. Professors can also
 // open future days and prepare polls there; a prepared poll stays invisible to
 // students until the professor clicks Start on its day.
+//
+// A poll can have one correct answer (optional; opinion polls have none). The
+// professor marks it with ✓ when writing the poll, or picks it later from the
+// "Correct answer" menu. Students learn it only once the poll has closed: the
+// bar is marked "Correct", and they're told whether their pick was right.
 import React, { useCallback, useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import SectionHeading from "../ui/SectionHeading";
 import api from "../../api/axios";
 import socket from "../../api/socket";
@@ -45,7 +50,7 @@ function startedAt(poll) {
 }
 
 // ── Horizontal bar graph, one bar per option ─────────────────────────────────
-function PollBars({ options, tally, responded, myOptionId, showNames, compact = false }) {
+function PollBars({ options, tally, responded, myOptionId, correctOptionId = null, showNames, compact = false }) {
   const byId = Object.fromEntries((tally ?? []).map((t) => [t.option_id, t]));
   const top  = Math.max(0, ...(tally ?? []).map((t) => t.count));
   return (
@@ -54,13 +59,19 @@ function PollBars({ options, tally, responded, myOptionId, showNames, compact = 
         const row    = byId[o.id];
         const count  = row?.count ?? 0;
         const pct    = responded > 0 ? Math.round((count / responded) * 100) : 0;
-        const mine   = myOptionId === o.id;
-        const leader = count > 0 && count === top;
+        const mine    = myOptionId === o.id;
+        const leader  = count > 0 && count === top;
+        const correct = correctOptionId === o.id;
         return (
           <li key={o.id}>
             <div className="flex items-baseline justify-between gap-3 text-sm">
               <span className="std-text break-words min-w-0">
                 {o.text}
+                {correct && (
+                  <span className="ml-2 inline-flex items-center gap-0.5 text-xs font-semibold text-green-600 dark:text-green-400">
+                    <Check size={12} aria-hidden="true" /> Correct
+                  </span>
+                )}
                 {mine && (
                   <span className="ml-2 text-xs font-semibold text-blue-600 dark:text-blue-400">Your pick</span>
                 )}
@@ -75,7 +86,9 @@ function PollBars({ options, tally, responded, myOptionId, showNames, compact = 
               }`}
             >
               <div
-                className={`h-full rounded-full transition-all duration-500 ${leader ? "bg-blue-600" : "bg-blue-400"}`}
+                className={`h-full rounded-full transition-all duration-500 ${
+                  correct ? "bg-green-500" : leader ? "bg-blue-600" : "bg-blue-400"
+                }`}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -122,6 +135,7 @@ function OptionButtons({ options, myOptionId, onVote }) {
 function PollComposer({ onSubmit, busy, mode = "today", date }) {
   const [question, setQuestion] = useState("");
   const [options,  setOptions]  = useState(["", ""]);
+  const [correct,  setCorrect]  = useState(null);   // index of the correct option, or none
 
   const valid = question.trim() && options.length >= MIN_OPTIONS && options.every((o) => o.trim());
 
@@ -132,13 +146,18 @@ function PollComposer({ onSubmit, busy, mode = "today", date }) {
     setOptions((prev) => (prev.length < MAX_OPTIONS ? [...prev, ""] : prev));
   }
   function removeOption(i) {
-    setOptions((prev) => (prev.length > MIN_OPTIONS ? prev.filter((_, j) => j !== i) : prev));
+    if (options.length <= MIN_OPTIONS) return;
+    setOptions((prev) => prev.filter((_, j) => j !== i));
+    setCorrect((c) => (c === null || c === i ? null : c > i ? c - 1 : c));
   }
 
   async function submit(prepare = mode === "plan") {
     if (!valid || busy) return;
-    const ok = await onSubmit({ question: question.trim(), options: options.map((o) => o.trim()) }, { prepare });
-    if (ok) { setQuestion(""); setOptions(["", ""]); }
+    const ok = await onSubmit(
+      { question: question.trim(), options: options.map((o) => o.trim()), correct_option: correct },
+      { prepare }
+    );
+    if (ok) { setQuestion(""); setOptions(["", ""]); setCorrect(null); }
   }
 
   return (
@@ -165,8 +184,22 @@ function PollComposer({ onSubmit, busy, mode = "today", date }) {
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
             aria-label={`Option ${i + 1}`}
             placeholder={`Option ${i + 1}`}
-            className={`flex-1 min-w-0 ${inputClass}`}
+            className={`flex-1 min-w-0 ${inputClass} ${correct === i ? "ring-2 ring-green-400 border-green-400" : ""}`}
           />
+          <button
+            type="button"
+            className={`px-2 py-2 rounded-md border cursor-pointer ${
+              correct === i
+                ? "bg-green-500 border-green-500 text-white"
+                : "border-slate-300 dark:border-slate-700 text-slate-400 hover:text-green-600 hover:border-green-400"
+            }`}
+            onClick={() => setCorrect((c) => (c === i ? null : i))}
+            aria-pressed={correct === i}
+            aria-label={`Mark option ${i + 1} as the correct answer`}
+            title={correct === i ? "Correct answer (click to unmark)" : "Mark as the correct answer"}
+          >
+            <Check size={14} />
+          </button>
           <button
             type="button"
             className="white-btn px-2 py-2"
@@ -178,6 +211,10 @@ function PollComposer({ onSubmit, busy, mode = "today", date }) {
           </button>
         </div>
       ))}
+
+      <p className="text-xs text-slate-400 dark:text-slate-500">
+        Optional: mark the correct answer with ✓. Students see it once you close the poll.
+      </p>
 
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <button
@@ -207,9 +244,44 @@ function PollComposer({ onSubmit, busy, mode = "today", date }) {
   );
 }
 
+// ── Correct answer: the professor's picker, and the student's outcome ───────
+function CorrectPicker({ poll, onChange, busy }) {
+  return (
+    <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+      Correct answer
+      <select
+        aria-label={`Correct answer: ${poll.question}`}
+        className="std-text text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-2 py-1 rounded-md max-w-full"
+        value={poll.correct_option_id ?? ""}
+        onChange={(e) => onChange(poll, e.target.value ? Number(e.target.value) : null)}
+        disabled={busy}
+      >
+        <option value="">None (opinion poll)</option>
+        {poll.options.map((o) => <option key={o.id} value={o.id}>{o.text}</option>)}
+      </select>
+    </label>
+  );
+}
+
+// "You got it right" / the correct answer, for a closed poll with one.
+function Outcome({ poll, myOptionId }) {
+  const correct = poll.options.find((o) => o.id === poll.correct_option_id);
+  if (!poll.closed_at || !correct) return null;
+  const right = myOptionId === correct.id;
+  return (
+    <p className={`mt-2 text-sm font-semibold ${right ? "text-green-600 dark:text-green-400" : "std-text"}`}>
+      {right
+        ? "✓ You got it right!"
+        : myOptionId
+          ? `Not quite. The correct answer is "${correct.text}".`
+          : `The correct answer is "${correct.text}".`}
+    </p>
+  );
+}
+
 // ── One poll in a day's list ─────────────────────────────────────────────────
-function PollResultCard({ snap, index, showNames }) {
-  const { poll, tally, responded, total_students } = snap;
+function PollResultCard({ snap, index, showNames, onCorrect, busy }) {
+  const { poll, tally, responded, total_students, my_option_id } = snap;
   return (
     <li className="py-3">
       <p className="text-sm text-slate-500 dark:text-slate-400 break-words">
@@ -219,7 +291,15 @@ function PollResultCard({ snap, index, showNames }) {
       </p>
       {Array.isArray(tally) && (
         <>
-          <PollBars compact options={poll.options} tally={tally} responded={responded} showNames={showNames} />
+          <PollBars
+            compact
+            options={poll.options}
+            tally={tally}
+            responded={responded}
+            myOptionId={my_option_id}
+            correctOptionId={poll.correct_option_id}
+            showNames={showNames}
+          />
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {showNames
               ? `${responded} of ${plural(total_students, "student")} responded`
@@ -227,6 +307,9 @@ function PollResultCard({ snap, index, showNames }) {
           </p>
         </>
       )}
+      {onCorrect
+        ? <CorrectPicker poll={poll} onChange={onCorrect} busy={busy} />
+        : <Outcome poll={poll} myOptionId={my_option_id} />}
     </li>
   );
 }
@@ -244,7 +327,9 @@ function PreparedPolls({ title, polls, canStart, startDisabledReason, onStart, o
             <li key={poll.id} className="py-2 flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-semibold std-text break-words">{poll.question}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{poll.options.map((o) => o.text).join(" · ")}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {poll.options.map((o) => (o.id === poll.correct_option_id ? `✓ ${o.text}` : o.text)).join(" · ")}
+                </p>
               </div>
               <div className="flex gap-2">
                 <button
@@ -335,17 +420,40 @@ function ClassPolls({ classId, date }) {
     };
     // Prepared polls changed (another professor window, or a start/delete).
     const onPrepared = ({ date: changed }) => { if (changed === date) loadHistory(); };
+    // The correct answer was set or changed (students hear only about closed polls).
+    const onCorrect = (change) => applyCorrect(change);
     socket.on("poll:state",    onState);
     socket.on("poll:update",   onUpdate);
     socket.on("poll:prepared", onPrepared);
+    socket.on("poll:correct",  onCorrect);
     return () => {
       socket.off("poll:state",    onState);
       socket.off("poll:update",   onUpdate);
       socket.off("poll:prepared", onPrepared);
+      socket.off("poll:correct",  onCorrect);
     };
   }, [loadHistory, date]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
+  // Put a poll's new correct answer into the live poll and the day's list.
+  function applyCorrect({ poll_id, correct_option_id }) {
+    const update = (p) => (p?.id === poll_id ? { ...p, correct_option_id } : p);
+    setState((prev) => (prev.poll?.id === poll_id ? { ...prev, poll: update(prev.poll) } : prev));
+    setHistory((prev) => prev.map((s) => (s.poll.id === poll_id ? { ...s, poll: update(s.poll) } : s)));
+  }
+
+  async function setCorrect(p, optionId) {
+    setBusy(true); setError(null);
+    try {
+      const { data } = await api.patch(`/api/classes/${classId}/polls/${p.id}/correct`, { option_id: optionId });
+      applyCorrect({ poll_id: data.poll.id, correct_option_id: data.poll.correct_option_id });
+    } catch (err) {
+      setError(err.response?.data?.error ?? "Couldn't change the correct answer.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function createPoll(body, { prepare = false } = {}) {
     setBusy(true); setError(null);
     try {
@@ -471,7 +579,14 @@ function ClassPolls({ classId, date }) {
         ) : (
           <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-700">
             {dayPolls.map((s, i) => (
-              <PollResultCard key={s.poll.id} snap={s} index={i} showNames={isProfessor} />
+              <PollResultCard
+                key={s.poll.id}
+                snap={s}
+                index={i}
+                showNames={isProfessor}
+                onCorrect={isProfessor ? setCorrect : null}
+                busy={busy}
+              />
             ))}
           </ul>
         )}
@@ -512,12 +627,19 @@ function ClassPolls({ classId, date }) {
         <>
           {showTally && (
             <>
-              <PollBars options={poll.options} tally={tally} responded={responded} showNames />
+              <PollBars
+                options={poll.options}
+                tally={tally}
+                responded={responded}
+                correctOptionId={poll.correct_option_id}
+                showNames
+              />
               <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
                 {responded} of {plural(total_students, "student")} responded
               </p>
             </>
           )}
+          {poll && <CorrectPicker poll={poll} onChange={setCorrect} busy={busy} />}
           {isOpen ? (
             <div className="mt-3 flex">
               <button type="button" className="blue-btn ml-auto" onClick={closePoll} disabled={busy}>
@@ -553,7 +675,16 @@ function ClassPolls({ classId, date }) {
             <OptionButtons options={poll.options} myOptionId={my_option_id} onVote={vote} />
           ) : (
             showTally && (
-              <PollBars options={poll.options} tally={tally} responded={responded} myOptionId={my_option_id} />
+              <>
+                <PollBars
+                  options={poll.options}
+                  tally={tally}
+                  responded={responded}
+                  myOptionId={my_option_id}
+                  correctOptionId={poll.correct_option_id}
+                />
+                <Outcome poll={poll} myOptionId={my_option_id} />
+              </>
             )
           )}
           <p className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -584,6 +715,8 @@ function ClassPolls({ classId, date }) {
                 snap={s}
                 index={dayPolls.indexOf(s)}
                 showNames={isProfessor}
+                onCorrect={isProfessor ? setCorrect : null}
+                busy={busy}
               />
             ))}
           </ul>

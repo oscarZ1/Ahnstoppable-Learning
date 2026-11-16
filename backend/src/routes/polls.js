@@ -5,6 +5,8 @@
 //   POST   /api/classes/:classId/polls/:pollId/start  – professor: start a prepared poll (its day only)
 //   DELETE /api/classes/:classId/polls/:pollId        – professor: delete a prepared poll
 //   PATCH  /api/classes/:classId/polls/:pollId/close  – professor: close the open poll
+//   PATCH  /api/classes/:classId/polls/:pollId/correct – professor: set or clear the correct answer
+//                                                       ({ option_id | null }), any time
 //   GET   /api/classes/:classId/polls/current         – member: open poll (or today's latest) + my vote
 //   POST  /api/classes/:classId/polls/:pollId/votes   – student: pick an option (upsert until closed)
 //   GET   /api/classes/:classId/polls?date=           – member: polls opened that day
@@ -17,6 +19,11 @@
 // Visibility: professors always see the tally AND who picked each option.
 // Students see counts only, and only once the poll has closed. Socket events
 // follow the same rule.
+//
+// Correct answer (optional, correct_option_id): set when the poll is made
+// ({ correct_option: index into options }) or later. Students never get it
+// while the poll is open or prepared; once it closes, they see which option
+// was correct (and the day list tells them which one they picked).
 
 import express from 'express';
 import pool from '../db/pool.js';
@@ -33,6 +40,7 @@ const MAX_OPTIONS  = 6;
 async function selectPolls(whereSql, params, tail = '') {
   const { rows } = await pool.query(
     `SELECT p.id, p.class_id, p.question, p.scheduled_for, p.created_at, p.opened_at, p.closed_at,
+            p.correct_option_id,
             (SELECT COALESCE(json_agg(json_build_object('id', o.id, 'text', o.text, 'position', o.position)
                                       ORDER BY o.position), '[]'::json)
              FROM   poll_options o
@@ -92,6 +100,14 @@ async function countStudents(classId) {
   return rows[0].n;
 }
 
+// The poll as this audience may see it: students don't learn the correct
+// answer until the poll has closed.
+function visiblePoll(poll, forProfessor) {
+  if (!poll || forProfessor || poll.closed_at) return poll;
+  const { correct_option_id: _hidden, ...rest } = poll;
+  return rest;
+}
+
 // Shape { poll, tally, responded, total_students } for a given audience.
 async function pollSnapshot(poll, classId, forProfessor, total_students = null) {
   const total  = total_students ?? await countStudents(classId);
@@ -99,7 +115,7 @@ async function pollSnapshot(poll, classId, forProfessor, total_students = null) 
   const { tally, responded } = poll && canSee
     ? await getTally(poll.id, forProfessor)
     : { tally: null, responded: null };
-  return { poll, tally, responded, total_students: total };
+  return { poll: visiblePoll(poll, forProfessor), tally, responded, total_students: total };
 }
 
 // Broadcast the poll state to both role rooms with role-appropriate tallies.
@@ -132,6 +148,11 @@ router.post('/', requireAuth, requireProfessor, requireClassMember, requireClass
   if (new Set(options.map((o) => o.toLowerCase())).size !== options.length) {
     return res.status(400).json({ error: 'Options must be different from each other.' });
   }
+  // The correct answer, as an index into options (0-based), or none.
+  const correct = req.body.correct_option ?? null;
+  if (correct !== null && !(Number.isInteger(correct) && correct >= 0 && correct < options.length)) {
+    return res.status(400).json({ error: 'correct_option must be the number of one of the options (0-based), or null.' });
+  }
 
   await closeLeftoverPolls(req.classId);
   const when = await dayStatus(date);
@@ -155,6 +176,13 @@ router.post('/', requireAuth, requireProfessor, requireClassMember, requireClass
        SELECT $1, t, i FROM unnest($2::text[]) WITH ORDINALITY AS u(t, i)`,
       [pollId, options]
     );
+    if (correct !== null) {
+      await client.query(
+        `UPDATE polls SET correct_option_id = (SELECT id FROM poll_options WHERE poll_id = $1 AND position = $2)
+         WHERE id = $1`,
+        [pollId, correct + 1]
+      );
+    }
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -192,6 +220,37 @@ router.patch('/:pollId/close', requireAuth, requireProfessor, requireClassMember
     const poll = await getPollById(pollId, req.classId);
     await emitPoll(req.app.get('io'), req.classId, poll);
     return res.json({ ...(await pollSnapshot(poll, req.classId, true)), my_option_id: null });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// ── Set or clear the correct answer (professor) ──────────────────────────────
+// Any time: while preparing, during the poll, or after it closed (e.g. the
+// professor forgot). Students hear about it only if the poll has closed.
+router.patch('/:pollId/correct', requireAuth, requireProfessor, requireClassMember, requireClassOwner, async (req, res) => {
+  const { pollId } = req.params;
+  if (!isId(pollId)) return res.status(404).json({ error: 'Poll not found.' });
+  const optionId = req.body.option_id ?? null;
+  if (optionId !== null && !(Number.isInteger(optionId) && optionId > 0)) {
+    return res.status(400).json({ error: 'option_id must be one of the poll\'s options, or null.' });
+  }
+  try {
+    const existing = await getPollById(pollId, req.classId);
+    if (!existing) return res.status(404).json({ error: 'Poll not found.' });
+    if (optionId !== null && !existing.options.some((o) => o.id === optionId)) {
+      return res.status(400).json({ error: 'That option does not belong to this poll.' });
+    }
+    await pool.query(`UPDATE polls SET correct_option_id = $1 WHERE id = $2 AND class_id = $3`, [optionId, pollId, req.classId]);
+    const poll = await getPollById(pollId, req.classId);
+
+    const io = req.app.get('io');
+    const change = { poll_id: poll.id, correct_option_id: poll.correct_option_id };
+    io.to(`class:${req.classId}:professor`).emit('poll:correct', change);
+    if (poll.closed_at) io.to(`class:${req.classId}:student`).emit('poll:correct', change);
+    if (!poll.opened_at) emitPrepared(io, req.classId, poll.scheduled_for);
+    return res.json({ poll });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error.' });
@@ -337,7 +396,8 @@ router.post('/:pollId/votes', requireAuth, requireClassMember, async (req, res) 
 
 // ── Polls for a day ───────────────────────────────────────────────────────────
 // Professors: everything planned for that day, prepared polls included.
-// Students: only polls that ran and closed, and never a day after today.
+// Students: only polls that ran and closed, and never a day after today; each
+// with my_option_id (their own pick), so they can see if they got it right.
 router.get('/', requireAuth, requireClassMember, async (req, res) => {
   const date = typeof req.query.date === 'string' ? req.query.date : null;
   if (date !== null && !ISO_DATE.test(date)) {
@@ -356,7 +416,14 @@ router.get('/', requireAuth, requireClassMember, async (req, res) => {
     );
     const total = await countStudents(req.classId);
     const snapshots = await Promise.all(polls.map((p) => pollSnapshot(p, req.classId, isProfessor, total)));
-    return res.json(snapshots);
+    if (isProfessor || polls.length === 0) return res.json(snapshots);
+
+    const { rows: mine } = await pool.query(
+      `SELECT poll_id, option_id FROM poll_votes WHERE user_id = $1 AND poll_id = ANY($2)`,
+      [req.user.id, polls.map((p) => p.id)]
+    );
+    const picked = new Map(mine.map((v) => [v.poll_id, v.option_id]));
+    return res.json(snapshots.map((s) => ({ ...s, my_option_id: picked.get(s.poll.id) ?? null })));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error.' });

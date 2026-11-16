@@ -1,18 +1,21 @@
 // src/components/classroom/StudyAssistantSettings.jsx
-// The class professor's study-assistant card: turn it on or off, give it
-// instructions and course notes, and read an anonymous AI summary of what
-// students asked it on the viewed day. Students' chats themselves are private
-// and never shown here. The professor chats with the assistant from the corner
-// button (components/assistant/AssistantLauncher.jsx), like students.
+// The class professor's course-help settings: turn it on or off for
+// students, give it instructions and course notes, and read an anonymous AI
+// summary of what students asked it on a day (picked here, today by default).
+// Students' chats themselves are private and never shown here.
+//
+// Shown inside the professor's corner assistant panel ("Course help settings"
+// in components/assistant/AssistantLauncher.jsx), not on the class page.
 import React, { useEffect, useState } from "react";
-import SectionHeading from "../ui/SectionHeading";
 import AutoGrowTextarea from "../ui/AutoGrowTextarea";
 import api from "../../api/axios";
+import { todayKey } from "../../utils/dates";
 import QuestionSummary from "./QuestionSummary";
 
 const FIELD = "w-full std-text text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-3 py-2 rounded-md outline-blue-600 focus:ring-2 focus:ring-blue-500/20 placeholder-slate-400 dark:placeholder-slate-500";
 
-function StudyAssistantSettings({ classId, date }) {
+function StudyAssistantSettings({ classId }) {
+  const [date,  setDate]  = useState(todayKey);   // the day the summary covers
   const [saved, setSaved] = useState(null);   // what the server has
   const [form,  setForm]  = useState(null);   // what's being edited
   const [busy,  setBusy]  = useState(false);
@@ -53,9 +56,8 @@ function StudyAssistantSettings({ classId, date }) {
   const set = (key) => (e) => { setNotice(null); setForm((f) => ({ ...f, [key]: e.target.value })); };
 
   return (
-    <div className="w-full rounded-lg shadow-md p-4 sm:p-6 border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+    <div className="w-full">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionHeading text="Study Assistant 🤖" />
         <label className="flex items-center gap-2 text-sm std-text cursor-pointer">
           <input
             type="checkbox"
@@ -67,11 +69,11 @@ function StudyAssistantSettings({ classId, date }) {
           On for students
         </label>
       </div>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Everyone, you included, has a general AI assistant (Gemini 3.5 Flash-Lite) in the corner of every page.
-        Turning this on lets students' assistant also see this class's discussions up to today (never planned days),
-        answered questions, the polls and checks you've run, and the notes below; yours always can. It never sees
-        comments, names or the roster. Your instructions below come first, for example to limit help on graded work.
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        Everyone has this general AI assistant (Gemini 3.5 Flash-Lite). Turning course help on lets students'
+        assistant also see this class's discussions up to today (never planned days), answered questions, the polls
+        and checks you've run, and the notes below; yours always can. It never sees comments, names or the roster.
+        Your instructions come first, for example to limit help on graded work.
       </p>
 
       <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="assistant-instructions">
@@ -114,7 +116,17 @@ function StudyAssistantSettings({ classId, date }) {
 
       {/* What students asked it that day, anonymously */}
       <div className="mt-5 border-t border-slate-100 dark:border-slate-700 pt-4">
-        <h3 className="text-sm font-semibold std-text">What students asked the assistant</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold std-text">What students asked the assistant</h3>
+          <input
+            type="date"
+            aria-label="Day to summarize"
+            className="std-text text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-2 py-1 rounded-md"
+            value={date}
+            max={todayKey()}
+            onChange={(e) => { if (e.target.value) setDate(e.target.value); }}
+          />
+        </div>
         <QuestionSummary
           key={date}
           classId={classId}

@@ -11,7 +11,6 @@ import CreateDiscussion from "../components/classroom/CreateDiscussion";
 import DiscussionFeed from "../components/classroom/discussion-board/DiscussionFeed";
 import AnonymousToggle from "../components/classroom/AnonymousToggle";
 import StudentQuestions from "../components/classroom/StudentQuestions";
-import StudyAssistantSettings from "../components/classroom/StudyAssistantSettings";
 import ClassSwitcher, { classLabel as labelOf } from "../components/classroom/ClassSwitcher";
 import { useAuth } from "../context/AuthContext";
 import { ClassViewContext } from "../context/ClassViewContext";
@@ -159,13 +158,8 @@ function ClassPage({ classId }) {
             <StudentQuestions classId={classId} date={viewDate} showNames={namesVisible} />
           </div>
 
-          {/* Study assistant settings (the class's professor). Students use the
-              assistant from the button in the corner (AssistantLauncher). */}
-          {isProfessorView && cls?.professor_id === user?.id && (
-            <div className="w-full sm:w-3/4 max-w-2xl">
-              <StudyAssistantSettings classId={classId} date={viewDate} />
-            </div>
-          )}
+          {/* The assistant, and the professor's course-help settings, live in
+              the corner panel (components/assistant/AssistantLauncher.jsx). */}
 
           {/* Professor controls */}
           {/* New discussions go on today or a planned future day, not past days */}

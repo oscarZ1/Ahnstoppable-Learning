@@ -1,7 +1,8 @@
 // src/pages/ClassResults.jsx
 // Professor-only record of every poll and understanding check in a class,
 // across all dates: counts, who answered what, and a CSV download of each
-// student's answers (e.g. for participation grades).
+// student's answers (e.g. for participation grades). Polls with a correct
+// answer show it (✓), how many got it right, and a "Correct?" CSV column.
 import React, { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import api from "../api/axios";
@@ -68,13 +69,17 @@ function PollsTable({ polls, classSlug }) {
     const rows = [];
     for (const { poll, tally } of polls) {
       const byId = Object.fromEntries((tally ?? []).map((t) => [t.option_id, t]));
+      const hasCorrect = poll.correct_option_id != null;
       for (const o of poll.options) {
         for (const v of byId[o.id]?.voters ?? []) {
-          rows.push([dateOf(poll.created_at), timeOf(poll.created_at), poll.question, v.name, o.text]);
+          rows.push([
+            dateOf(poll.created_at), timeOf(poll.created_at), poll.question, v.name, o.text,
+            hasCorrect ? (o.id === poll.correct_option_id ? "Yes" : "No") : "",
+          ]);
         }
       }
     }
-    downloadCsv(`${classSlug}-polls.csv`, ["Date", "Time", "Question", "Student", "Answer"], rows);
+    downloadCsv(`${classSlug}-polls.csv`, ["Date", "Time", "Question", "Student", "Answer", "Correct?"], rows);
   }
 
   return (
@@ -106,8 +111,19 @@ function PollsTable({ polls, classSlug }) {
                       <td className={td}>
                         {poll.options.map((o) => {
                           const n = byId[o.id]?.count ?? 0;
-                          return <div key={o.id} className="whitespace-nowrap">{o.text}: <span className="font-semibold tabular-nums">{n}</span> <span className="text-xs text-slate-400">({pct(n, responded)}%)</span></div>;
+                          const correct = o.id === poll.correct_option_id;
+                          return (
+                            <div key={o.id} className={`whitespace-nowrap ${correct ? "text-green-700 dark:text-green-400 font-semibold" : ""}`}>
+                              {correct && <span aria-label="Correct answer">✓ </span>}
+                              {o.text}: <span className="font-semibold tabular-nums">{n}</span> <span className="text-xs text-slate-400">({pct(n, responded)}%)</span>
+                            </div>
+                          );
                         })}
+                        {poll.correct_option_id != null && (
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            {byId[poll.correct_option_id]?.count ?? 0} of {responded} got it right
+                          </div>
+                        )}
                       </td>
                       <td className={`${td} whitespace-nowrap tabular-nums`}>{responded} of {total_students}</td>
                       <td className={td}><ExpandButton open={open} onClick={() => setOpenId(open ? null : poll.id)} label={`Who answered: ${poll.question}`} /></td>
@@ -120,7 +136,7 @@ function PollsTable({ polls, classSlug }) {
                               const voters = byId[o.id]?.voters ?? [];
                               return (
                                 <div key={o.id}>
-                                  <p className="text-xs font-semibold std-text">{o.text} ({voters.length})</p>
+                                  <p className="text-xs font-semibold std-text">{o.id === poll.correct_option_id ? "✓ " : ""}{o.text} ({voters.length})</p>
                                   <p className="text-xs text-slate-500 dark:text-slate-400">{voters.length ? voters.map((v) => v.name).join(", ") : "Nobody"}</p>
                                 </div>
                               );

@@ -52,7 +52,7 @@ test('the Results page lists polls and checks with who answered, and downloads C
   const pollsCard = page.locator('div.rounded-lg').filter({ has: pollsTable });
   const [pollCsv] = await Promise.all([page.waitForEvent('download'), pollsCard.getByRole('button', { name: 'Download CSV' }).click()]);
   const pollText = fs.readFileSync(await pollCsv.path(), 'utf8');
-  expect(pollText.split('\r\n')[0]).toBe('Date,Time,Question,Student,Answer');
+  expect(pollText.split('\r\n')[0]).toBe('Date,Time,Question,Student,Answer,Correct?');
   expect(pollText).toContain(`${question},${alice.name},Social`);
 
   const checksCard = page.locator('div.rounded-lg').filter({ has: checksTable });

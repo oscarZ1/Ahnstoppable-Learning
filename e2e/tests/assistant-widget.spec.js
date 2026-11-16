@@ -73,6 +73,7 @@ test('the corner button shows for students and professors on every signed-in pag
   await openClass(page);
   await openAssistant(page);
   await expect(assistantPanel(page).getByLabel('What the assistant helps with')).toHaveValue(String(fixtures().classId));
+  await expect(assistantPanel(page).getByRole('button', { name: 'Course help settings' })).toHaveCount(0);   // students never
 
   const prof = await (await browser.newContext()).newPage();
   await signInProfessor(prof);
@@ -80,9 +81,12 @@ test('the corner button shows for students and professors on every signed-in pag
   const profPanel = await openAssistant(prof);
   await expect(profPanel.getByLabel('What the assistant helps with')).toHaveValue('site');
   await expect(profPanel.getByText(/teaching ideas/)).toBeVisible();
+  await expect(profPanel.getByRole('button', { name: 'Course help settings' })).toHaveCount(0);   // only for a class they teach
   await openClass(prof);
   await openAssistant(prof);
   await expect(assistantPanel(prof).getByLabel('What the assistant helps with')).toHaveValue(String(fixtures().classId));
+  await expect(assistantPanel(prof).getByRole('button', { name: 'Course help settings' })).toBeVisible();
+  await expect(prof.getByRole('heading', { name: /Study Assistant/ })).toHaveCount(0);   // no card on the class page
 });
 
 test('general help is a general assistant that knows the site, in its own thread', async ({ page }) => {
