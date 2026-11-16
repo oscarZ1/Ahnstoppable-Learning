@@ -18,8 +18,11 @@ import classroomRoutes from './routes/classroom.js';
 import questionRoutes from './routes/questions.js';
 import pollRoutes from './routes/polls.js';
 import rosterRoutes from './routes/roster.js';
+import assistantRoutes from './routes/assistant.js';
+import meRoutes from './routes/me.js';
 import registerSockets from './socket/index.js';
 import pool from './db/pool.js';
+import { scheduleRetention } from './services/retention.js';
 
 // ── Boot-time config checks ──────────────────────────────────────────────────
 // Fail loudly here rather than falling back to '*' CORS or an undefined JWT secret.
@@ -54,12 +57,14 @@ app.use((req, _res, next) => { req.body ??= {}; next(); });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',                              authRoutes);
+app.use('/api/me',                                meRoutes);
 app.use('/api/classes',                           classRoutes);
 app.use('/api/classes/:classId/posts',            postRoutes);
 app.use('/api/posts/:postId/comments',            commentRoutes);
 app.use('/api/classes/:classId/questions',        questionRoutes);
 app.use('/api/classes/:classId/polls',            pollRoutes);
 app.use('/api/classes/:classId/roster',           rosterRoutes);
+app.use('/api/classes/:classId/assistant',        assistantRoutes);
 app.use('/api/classes/:classId',                  classroomRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
@@ -92,4 +97,6 @@ const PORT = process.env.PORT || 4000;
 
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  // Delete study-assistant chats past their retention window, now and daily.
+  scheduleRetention();
 });

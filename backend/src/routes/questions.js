@@ -11,8 +11,11 @@
 //
 // Rows carry is_mine (and liked_by_me) for the requester; students never get
 // other students' identities.
-//   GET   /api/classes/:classId/questions/summary?date= – professor: the saved AI summary of that day
-//   POST  /api/classes/:classId/questions/summary      – professor: create / refresh it ({ date })
+//   GET   /api/classes/:classId/questions/summary?date= – member: the saved AI summary of that day
+//   POST  /api/classes/:classId/questions/summary      – member: create / refresh it ({ date })
+//         Students get it only while it matches the day's current questions (never
+//         text that was since edited or deleted), and without the professor's
+//         "ideas for next class".
 //
 // Student-authored rows are masked for students (see utils/anonymity.js).
 
@@ -21,8 +24,8 @@ import pool from '../db/pool.js';
 import { requireAuth, requireProfessor, requireClassMember, requireClassOwner, isId } from '../middleware/auth.js';
 import { forRequester } from '../utils/anonymity.js';
 import { emitToClass } from '../socket/emit.js';
-import { questionLimits, summaryLimit, discussionLimits, likeLimits } from '../middleware/rateLimit.js';
-import { summarizeQuestions, summariesConfigured, SummaryError } from '../services/questionSummary.js';
+import { questionLimits, summaryLimit, classSummaryLimit, discussionLimits, likeLimits } from '../middleware/rateLimit.js';
+import { savedSummaries } from '../services/savedSummaries.js';
 import { dayStatus, isValidDay } from '../utils/days.js';
 import { isClassProfessor, takeBackPoints } from '../utils/moderation.js';
 
@@ -66,7 +69,7 @@ const SELECT = `
   FROM   questions q
   JOIN   users u ON u.id = q.author_id`;
 
-// ── AI summary of a day's questions (professor only) ─────────────────────────
+// ── AI summary of a day's questions ──────────────────────────────────────────
 // The summary stores a snapshot of the questions it covered (text only, as
 // Q1…Qn), so its themes keep matching even after more questions arrive.
 async function dayQuestions(classId, date) {
@@ -80,98 +83,41 @@ async function dayQuestions(classId, date) {
   return rows;
 }
 
-function summaryDate(value) {
-  if (value == null || value === '') return { date: null };
-  return isValidDay(String(value)) ? { date: String(value) } : { error: 'date must be YYYY-MM-DD.' };
-}
-
-router.get('/summary', requireAuth, requireProfessor, requireClassMember, requireClassOwner, async (req, res) => {
-  const { date, error } = summaryDate(req.query.date);
-  if (error) return res.status(400).json({ error });
-  try {
-    const saved = await savedSummary(req.classId, date);
-    const current = await dayQuestions(req.classId, date);
-    return res.json({
-      summary: saved,
-      current_question_count: current.length,
-      configured: summariesConfigured(),
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error.' });
-  }
-});
-
 // The saved summary covers exactly these questions (same text, same order). Answering
 // a question doesn't change what the AI sees, so it doesn't need a new summary.
-function coversSameQuestions(saved, questions) {
-  const covered = saved?.summary?.questions;
+const sameQuestions = (summary, questions) => {
+  const covered = summary?.questions;
   return Array.isArray(covered) && covered.length === questions.length
     && covered.every((q, i) => q.content === questions[i].content);
+};
+
+// What a student may see: only an up-to-date summary (an outdated one may quote
+// a question that was since edited or deleted), and not the professor's ideas.
+function forStudents(req, { summary, items }) {
+  if (!summary || req.user.role === 'professor') return summary;
+  if (!sameQuestions(summary.summary, items)) return null;
+  const { suggested_followups: _ideas, ...rest } = summary.summary;
+  return { ...summary, summary: rest };
 }
 
-async function savedSummary(classId, date) {
-  const { rows } = await pool.query(
-    `SELECT summary, question_count, model, created_at, summary_date
-     FROM   question_summaries
-     WHERE  class_id = $1 AND summary_date = COALESCE($2::date, CURRENT_DATE)`,
-    [classId, date]
-  );
-  return rows[0] ?? null;
-}
-
-// Summaries being made right now, by class and day, so a double-click or a
-// second tab shares one AI call instead of starting another.
-const inFlight = new Map();
-
-// Make (or reuse) the day's summary. Returns { summary, current_question_count, unchanged }.
-async function makeSummary(classId, date, userId) {
-  const questions = await dayQuestions(classId, date);
-  const saved = await savedSummary(classId, date);
-  if (saved && coversSameQuestions(saved, questions)) {
-    return { summary: saved, current_question_count: questions.length, unchanged: true };
-  }
-  const { summary, model } = await summarizeQuestions(questions);
-  const stored = {
-    ...summary,
+const summaries = savedSummaries({
+  table: 'question_summaries',
+  source: 'class',
+  dayItems: dayQuestions,
+  snapshot: (questions) => ({
     questions: questions.map((q, i) => ({ number: i + 1, content: q.content, answered: q.answered })),
-  };
-  const { rows } = await pool.query(
-    `INSERT INTO question_summaries (class_id, summary_date, summary, question_count, model, created_by)
-     VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4, $5, $6)
-     ON CONFLICT (class_id, summary_date) DO UPDATE
-       SET summary = EXCLUDED.summary, question_count = EXCLUDED.question_count,
-           model = EXCLUDED.model, created_by = EXCLUDED.created_by, created_at = NOW()
-     RETURNING summary, question_count, model, created_at, summary_date`,
-    [classId, date, JSON.stringify(stored), questions.length, model, userId]
-  );
-  return { summary: rows[0], current_question_count: questions.length, unchanged: false };
+  }),
+  sameItems: sameQuestions,
+  present: forStudents,
+});
+
+// A professor only for their own class; students for any class they're in.
+function requireOwnerIfProfessor(req, res, next) {
+  return req.user.role === 'professor' ? requireClassOwner(req, res, next) : next();
 }
 
-router.post('/summary', requireAuth, requireProfessor, requireClassMember, requireClassOwner, summaryLimit, async (req, res) => {
-  const { date, error } = summaryDate(req.body.date);
-  if (error) return res.status(400).json({ error });
-  const key = `${req.classId}:${date ?? 'today'}`;
-  try {
-    let job = inFlight.get(key);
-    const joined = Boolean(job);
-    if (!job) {
-      job = makeSummary(req.classId, date, req.user.id).finally(() => inFlight.delete(key));
-      inFlight.set(key, job);
-    }
-    const result = await job;
-    // Reusing a summary didn't call the AI, so it doesn't count toward summaryLimit.
-    if (joined || result.unchanged) res.locals.summaryReused = true;
-    return res.status(result.unchanged ? 200 : 201).json({ ...result, configured: true });
-  } catch (err) {
-    if (err instanceof SummaryError) {
-      if (err.retryAfter) res.set('Retry-After', String(err.retryAfter));
-      return res.status(err.status).json({ error: err.message, retry_after: err.retryAfter });
-    }
-    console.error(err);
-    return res.status(500).json({ error: 'Server error.' });
-  }
-});
+router.get('/summary', requireAuth, requireClassMember, requireOwnerIfProfessor, summaries.get);
+router.post('/summary', requireAuth, requireClassMember, requireOwnerIfProfessor, summaryLimit, classSummaryLimit, summaries.post);
 
 // ── List questions for a day ──────────────────────────────────────────────────
 router.get('/', requireAuth, requireClassMember, async (req, res) => {

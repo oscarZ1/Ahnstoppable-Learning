@@ -100,8 +100,36 @@ export const summaryLimit = rateLimit({
   handler: tooMany("You've made 10 AI summaries in the last hour. Please try again later."),
 });
 
+// Students' summaries also share one budget per class, so a busy class can't
+// run up the bill by refreshing after every new question. A professor's own
+// summaries don't count.
+export const classSummaryLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: Number(process.env.STUDENT_SUMMARIES_PER_CLASS_HOUR ?? 12),
+  keyGenerator: (req) => `class-summaries:${req.classId}`,
+  skip: (req) => req.user.role === 'professor',
+  skipFailedRequests: true,
+  requestWasSuccessful: (_req, res) => res.statusCode < 400 && !res.locals.summaryReused,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler: tooMany("This class's question summary has been updated a lot in the last hour. Please try again later."),
+});
+
 // Comments and replies share one budget: both are discussion posts.
 export const questionLimits   = contentLimits({ name: 'questions',  perMinute: 5, perHour: 30, what: 'questions' });
 export const discussionLimits = contentLimits({ name: 'discussion', perMinute: 6, perHour: 60, what: 'comments and replies' });
 // Every like toggle is broadcast to the whole class, so cap scripted flooding.
 export const likeLimits       = contentLimits({ name: 'likes',      perMinute: 60, perHour: 600, what: 'likes' });
+// Every study-assistant message is an AI call on the shared Gemini quota.
+export const assistantLimits  = contentLimits({ name: 'assistant',  perMinute: 6, perHour: 40, what: 'messages to the study assistant' });
+
+// Saving an own AI key makes a test call to the provider. Every attempt counts,
+// failed ones included, so the site can't be used to try out stolen keys.
+export const keyCheckLimit = rateLimit({
+  windowMs: WINDOW_MS,
+  limit: 5,
+  keyGenerator: (req) => `ai-key:${req.user.id}`,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler: tooMany("You've tried to add an AI key too many times. Wait 15 minutes and try again."),
+});

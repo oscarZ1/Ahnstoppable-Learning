@@ -290,8 +290,19 @@ function StudentQuestions({ classId, date, showNames }) {
         )}
       </div>
 
-      {/* AI summary of the day's questions (professor only) */}
-      {isProfessor && <QuestionSummary classId={classId} date={date} questionCount={questions.length} />}
+      {/* AI summary of the day's questions (the professor's includes ideas for next class) */}
+      {isProfessor ? (
+        <QuestionSummary classId={classId} date={date} questionCount={questions.length} />
+      ) : (
+        <QuestionSummary
+          classId={classId}
+          date={date}
+          questionCount={questions.length}
+          currentQuestions={questions.map((q) => q.content)}
+          forStudents
+          description="An AI overview of this day's questions: the main themes and common confusions. No names."
+        />
+      )}
 
       {/* Ask box (students) */}
       {!isProfessor && (

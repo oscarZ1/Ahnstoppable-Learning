@@ -1,4 +1,4 @@
-// The professor's AI summary of a day's student questions, against the fake
+// The AI summary of a day's student questions (professor and students), against the fake
 // Gemini API (fake-gemini.js): no key, no cost, real SDK call path.
 import { test, expect } from '@playwright/test';
 import { STUDENTS } from './people.js';
@@ -6,8 +6,8 @@ import { API_PORT, FAKE_GEMINI_PORT } from '../test-db.js';
 import { signInProfessor, signInStudent, openClass, card, unique, fixtures, studentToken, professorToken } from './helpers.js';
 
 const { casey } = STUDENTS;
-const MAIN_MODEL     = 'gemini-3.5-flash';
-const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+const MAIN_MODEL     = 'gemini-3.5-flash-lite';
+const FALLBACK_MODEL = 'gemini-fallback-test';   // none by default; playwright.config.js turns one on
 const API  = `http://localhost:${API_PORT}`;
 const FAKE = `http://localhost:${FAKE_GEMINI_PORT}`;
 
@@ -231,15 +231,56 @@ test('an AI refusal, rate limit or overload shows a message and keeps the saved 
   await expect(card(page, /Questions/).getByText(/^Summarized at .* from \d+ questions?/)).toHaveText(before);
 });
 
-test('students cannot see or create summaries', async ({ page }) => {
+test('students summarize the day too: only an up-to-date summary, without the ideas for next class, limited per class', async ({ page }) => {
   const token = await studentToken('casey', casey);
-  const { classId } = fixtures();
-  expect((await call('GET',  `/api/classes/${classId}/questions/summary`, token)).status).toBe(403);
-  expect((await call('POST', `/api/classes/${classId}/questions/summary`, token, {})).status).toBe(403);
+  const prof  = await professorToken();
+
+  // The professor's saved summary is now outdated: students don't get it
+  await changeQuestions();
+  let res = await call('GET', summaryPath(), token);
+  expect(res.status).toBe(200);
+  expect(res.data.summary).toBeNull();
+  expect(res.data.current_question_count).toBeGreaterThan(0);
+  expect((await call('GET', summaryPath(), prof)).data.summary).not.toBeNull();
 
   await signInStudent(page, casey);
   await openClass(page);
   const questions = card(page, /Questions/);
-  await expect(questions.getByRole('button', { name: /Summarize questions/ })).toHaveCount(0);
-  await expect(questions.getByRole('region', { name: 'AI summary of questions' })).toHaveCount(0);
+  await expect(questions.getByText(/questions changed since the last summary/)).toBeVisible();
+  const before = (await fakeRequests()).length;
+  await questions.getByRole('button', { name: '✨ Summarize questions' }).click();
+  const summary = questions.getByRole('region', { name: 'AI summary of questions' });
+  await expect(summary.getByText(/^Fake overview of \d+ questions\.$/)).toBeVisible();
+  await expect(summary.getByText('Fake confusion')).toBeVisible();
+  await expect(summary.getByText('Fake follow-up')).toHaveCount(0);
+  await expect(summary.getByText('Ideas for next class')).toHaveCount(0);
+  expect(await modelsCalledSince(before)).toHaveLength(1);   // one AI call (the earlier overload test may still be skipping the main model)
+
+  // The server leaves the professor's ideas out for students, and keeps them for the professor
+  res = await call('GET', summaryPath(), token);
+  expect(res.data.summary.summary.overview).toMatch(/^Fake overview/);
+  expect(res.data.summary.summary).not.toHaveProperty('suggested_followups');
+  expect((await call('GET', summaryPath(), prof)).data.summary.summary.suggested_followups).toEqual(['Fake follow-up']);
+  // Nothing changed: no new AI call, and it doesn't count toward the limits
+  res = await call('POST', summaryPath(), token, {});
+  expect(res.status).toBe(200);
+  expect(res.data.unchanged).toBe(true);
+
+  // A question is edited: the summary disappears for students right away
+  await changeQuestions();
+  await expect(questions.getByText(/questions changed since the last summary/)).toBeVisible();
+  await expect(summary).toHaveCount(0);
+  expect((await call('GET', summaryPath(), token)).data.summary).toBeNull();
+
+  // Students share a budget per class (3 an hour in these tests)
+  for (let i = 0; i < 2; i++) {
+    await changeQuestions();
+    expect((await call('POST', summaryPath(), token, {})).status).toBe(201);
+  }
+  await changeQuestions();
+  const blocked = await call('POST', summaryPath(), token, {});
+  expect(blocked.status).toBe(429);
+  expect(blocked.data.error).toMatch(/updated a lot in the last hour/);
+  // The professor's own summaries don't count toward it
+  expect((await call('POST', summaryPath(), prof, {})).status).toBe(201);
 });

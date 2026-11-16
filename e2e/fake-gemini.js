@@ -1,12 +1,17 @@
 // A stand-in for the Gemini API, so the browser tests exercise the real SDK
-// call path without a key or any cost. The backend is started with
-// GEMINI_BASE_URL pointing here.
-//   POST /v1beta/models/<model>:generateContent – answers like the real API
+// call paths without a key or any cost. The backend is started with
+// GEMINI_BASE_URL (the shared key) and BYO_GEMINI_BASE_URL (students' own
+// keys) pointing here.
+//   POST /v1beta/models/<model>:generateContent – Gemini, answers like the real API
 //                                                 (mode: ok | refusal | overloaded | rate_limit
 //                                                  | rate_limit_minute | rate_limit_brief | rate_limit_daily)
-//   POST /__mode        – { mode, model?, times? } switch behaviour; with model, only
-//                         that model misbehaves; with times, only the next N calls do
-//   GET  /__requests    – every generateContent request received so far
+//   POST /__mode        – { mode, model?, times? } switch Gemini's behaviour; with model,
+//                         only that model misbehaves; with times, only the next N calls do
+//   GET  /__requests    – every AI request received so far, as
+//                         { provider, model, body, headers: { apiKey } }
+// A study-assistant chat (plain text, no JSON schema) gets "Fake reply to: <last
+// user text>"; any other call (a question summary, the key check) gets a fake
+// question summary. A key starting with "bad-" is rejected as invalid.
 import http from 'node:http';
 import { FAKE_GEMINI_PORT } from './test-db.js';
 
@@ -48,6 +53,17 @@ function fakeSummary(body) {
   };
 }
 
+const textOf = (content) => (content?.parts ?? []).map((p) => p.text ?? '').join('');
+
+function isAssistantChat(body) {
+  return !body.generationConfig?.responseJsonSchema && /study assistant/i.test(textOf(body.systemInstruction));
+}
+
+function fakeChatReply(body) {
+  const lastUser = (body.contents ?? []).filter((c) => c.role === 'user').at(-1);
+  return `Fake reply to: ${textOf(lastUser)}`;
+}
+
 const server = http.createServer((req, res) => {
   let raw = '';
   req.on('data', (chunk) => { raw += chunk; });
@@ -65,7 +81,11 @@ const server = http.createServer((req, res) => {
     if (req.method === 'POST' && match) {
       const body = JSON.parse(raw || '{}');
       const model = decodeURIComponent(match[1]);
-      requests.push({ model, body, headers: { apiKey: req.headers['x-goog-api-key'] ?? null } });
+      const apiKey = req.headers['x-goog-api-key'] ?? null;
+      requests.push({ provider: 'gemini', model, body, headers: { apiKey } });
+      if (String(apiKey).startsWith('bad-')) {
+        return send(res, 400, { error: { code: 400, message: 'API key not valid. Please pass a valid API key. (fake)', status: 'INVALID_ARGUMENT' } });
+      }
       let current = mode;
       if (onlyModel && model !== onlyModel) current = 'ok';
       if (current !== 'ok' && timesLeft != null) {
@@ -88,7 +108,7 @@ const server = http.createServer((req, res) => {
       return send(res, 200, {
         ...base,
         candidates: [{
-          content: { role: 'model', parts: [{ text: JSON.stringify(fakeSummary(body)) }] },
+          content: { role: 'model', parts: [{ text: isAssistantChat(body) ? fakeChatReply(body) : JSON.stringify(fakeSummary(body)) }] },
           finishReason: 'STOP', index: 0,
         }],
       });

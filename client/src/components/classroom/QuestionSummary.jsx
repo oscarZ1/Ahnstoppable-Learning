@@ -1,11 +1,23 @@
 // src/components/classroom/QuestionSummary.jsx
-// Professor-only AI summary of the viewed day's student questions. Created on
-// demand ("Summarize questions"), saved on the server, and shown again when the
-// day is reopened; "Refresh" re-runs it, e.g. after new questions arrive (the
-// server skips the AI call when nothing changed). When the AI service says how
-// long to wait, the button counts down until then.
+// AI summary of the viewed day's student questions, in the Questions card for
+// the professor and the class's students alike. Created on demand ("Summarize
+// questions"), saved on the server, and shown again when the day is reopened;
+// "Refresh" re-runs it, e.g. after new questions arrive (the server skips the
+// AI call when nothing changed). When the AI service says how long to wait, the
+// button counts down until then.
+//
+// Students (forStudents) never see an outdated summary: pass the day's
+// question texts (currentQuestions), and if they no longer match what was
+// summarized (a question was added, edited or deleted), it offers an update
+// instead. The server enforces the same, and leaves out "Ideas for next class".
+//
+// Also used for the study assistant's summary (StudyAssistantSettings): pass a
+// different endpoint, title and wording. questionCount defaults to the count
+// the server reports.
 import React, { useEffect, useState } from "react";
 import api from "../../api/axios";
+import { useRetryCountdown } from "../../hooks/useRetryCountdown";
+import { useClassView, PREVIEW_MESSAGE } from "../../context/ClassViewContext";
 
 function timeOf(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -26,61 +38,61 @@ function Bullets({ title, items }) {
   );
 }
 
-function QuestionSummary({ classId, date, questionCount }) {
+function QuestionSummary({
+  classId, date, questionCount,
+  endpoint = `/api/classes/${classId}/questions/summary`,
+  title = "✨ AI summary",
+  regionLabel = "AI summary of questions",
+  buttonText = "✨ Summarize questions",
+  description = "An AI overview of this day's questions, only visible to you.",
+  emptyText = "Nothing to summarize yet.",
+  noun = "question",
+  forStudents = false,
+  currentQuestions = null,
+}) {
+  const { preview } = useClassView();
   const [data,  setData]  = useState(null);   // { summary, current_question_count, configured }
   const [busy,  setBusy]  = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
-  const [waitUntil, setWaitUntil] = useState(0);  // ms timestamp; 0 = no wait
-  const [now, setNow] = useState(() => Date.now());
-
-  // Tick once a second while a wait is running.
-  useEffect(() => {
-    if (!waitUntil) return;
-    const timer = setInterval(() => {
-      const t = Date.now();
-      setNow(t);
-      if (t >= waitUntil) { setWaitUntil(0); setError(null); }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [waitUntil]);
+  const { waitSeconds, waiting, startFromError } = useRetryCountdown(() => setError(null));
 
   useEffect(() => {
     if (!classId || !date) return;
     let ignore = false;
     setData(null); setError(null); setNotice(null);
-    api.get(`/api/classes/${classId}/questions/summary`, { params: { date } })
+    api.get(endpoint, { params: { date } })
       .then((res) => { if (!ignore) setData(res.data); })
-      .catch((err) => { if (!ignore) console.error("Failed to load the question summary:", err); });
+      .catch((err) => { if (!ignore) console.error("Failed to load the summary:", err); });
     return () => { ignore = true; };
-  }, [classId, date]);
+  }, [classId, date, endpoint]);
 
   async function summarize() {
     if (busy || waiting) return;
+    if (preview) { setError(PREVIEW_MESSAGE); return; }
     setBusy(true); setError(null); setNotice(null);
     try {
-      const { data: fresh } = await api.post(`/api/classes/${classId}/questions/summary`, { date });
+      const { data: fresh } = await api.post(endpoint, { date });
       setData(fresh);
       if (fresh.unchanged) setNotice("Nothing has changed since this summary, so it wasn't run again.");
     } catch (err) {
-      setError(err.response?.data?.error ?? "Couldn't summarize the questions.");
-      const retryAfter = Number(err.response?.data?.retry_after);
-      if (retryAfter > 0) {
-        const t = Date.now();
-        setNow(t);
-        setWaitUntil(t + retryAfter * 1000);
-      }
+      setError(err.response?.data?.error ?? `Couldn't summarize the ${noun}s.`);
+      startFromError(err);
     } finally {
       setBusy(false);
     }
   }
 
-  const waitSeconds = waitUntil ? Math.max(0, Math.ceil((waitUntil - now) / 1000)) : 0;
-  const waiting = waitSeconds > 0;
-
   if (!data) return null;
-  const saved      = data.summary;
+  questionCount ??= data.current_question_count ?? 0;
   const configured = data.configured;
+  const covered    = data.summary?.summary?.questions;
+  // Outdated when the server says so on loading, or (live) when the day's
+  // questions no longer match what was summarized.
+  const outdated   = forStudents && (data.outdated || (Boolean(data.summary) && Array.isArray(currentQuestions)
+    && !(Array.isArray(covered) && covered.length === currentQuestions.length
+         && covered.every((q, i) => q.content === currentQuestions[i]))));
+  const saved      = outdated ? null : data.summary;
 
   // ── No summary yet ────────────────────────────────────────────────────────
   if (!saved) {
@@ -92,14 +104,16 @@ function QuestionSummary({ classId, date, questionCount }) {
           onClick={summarize}
           disabled={busy || waiting || questionCount === 0 || !configured}
         >
-          {busy ? "Summarizing…" : waiting ? `Try again in ${waitSeconds}s` : "✨ Summarize questions"}
+          {busy ? "Summarizing…" : waiting ? `Try again in ${waitSeconds}s` : buttonText}
         </button>
         <span className="text-xs text-slate-400 dark:text-slate-500">
           {!configured
             ? "AI summaries aren't set up on the server yet."
             : questionCount === 0
-              ? "Nothing to summarize yet."
-              : "An AI overview of this day's questions, only visible to you."}
+              ? emptyText
+              : outdated
+                ? "The questions changed since the last summary. Summarize again to update it."
+                : description}
         </span>
         {error && <p className="w-full text-xs text-red-400">{error}</p>}
       </div>
@@ -113,10 +127,10 @@ function QuestionSummary({ classId, date, questionCount }) {
 
   return (
     <section
-      aria-label="AI summary of questions"
+      aria-label={regionLabel}
       className="mt-3 rounded-lg border border-violet-200 dark:border-violet-500/30 bg-violet-50/60 dark:bg-violet-500/10 p-3 sm:p-4"
     >
-      <h3 className="text-sm font-semibold text-violet-800 dark:text-violet-200">✨ AI summary</h3>
+      <h3 className="text-sm font-semibold text-violet-800 dark:text-violet-200">{title}</h3>
       <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{s.overview}</p>
 
       {s.themes?.length > 0 && (
@@ -128,7 +142,7 @@ function QuestionSummary({ classId, date, questionCount }) {
                 <details>
                   <summary className="cursor-pointer text-slate-500 dark:text-slate-400">
                     <span className="font-semibold std-text">{t.title}</span>
-                    <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">{plural(t.question_numbers.length, "question")}</span>
+                    <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">{plural(t.question_numbers.length, noun)}</span>
                   </summary>
                   <p className="mt-1 text-slate-600 dark:text-slate-300">{t.description}</p>
                   <ul className="mt-1 pl-4 space-y-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -144,11 +158,11 @@ function QuestionSummary({ classId, date, questionCount }) {
       )}
 
       <Bullets title="Common confusions" items={s.confusions} />
-      <Bullets title="Ideas for next class" items={s.suggested_followups} />
+      {!forStudents && <Bullets title="Ideas for next class" items={s.suggested_followups} />}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-400 dark:text-slate-500">
-          Summarized at {timeOf(saved.created_at)} from {plural(saved.question_count, "question")} · AI-generated, may contain mistakes
+          Summarized at {timeOf(saved.created_at)} from {plural(saved.question_count, noun)} · AI-generated, may contain mistakes
         </p>
         <button
           type="button"
@@ -158,7 +172,7 @@ function QuestionSummary({ classId, date, questionCount }) {
         >
           {busy ? "Summarizing…"
             : waiting ? `Try again in ${waitSeconds}s`
-            : newSince > 0 ? `Refresh (${plural(newSince, "new question")})` : "Refresh"}
+            : newSince > 0 ? `Refresh (${plural(newSince, `new ${noun}`)})` : "Refresh"}
         </button>
       </div>
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}

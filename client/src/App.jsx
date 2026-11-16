@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Header from "./components/ui/Header";
+import AssistantLauncher from "./components/assistant/AssistantLauncher";
 
 import SignIn from "./pages/SignIn";
 import HomeDashboard from "./pages/HomeDashboard";
@@ -31,6 +32,8 @@ function App() {
           <Route path="/class/:classId/results" element={<PrivateRoute><ClassResults /></PrivateRoute>} />
           <Route path="*"               element={<Navigate to="/" replace />} />
         </Routes>
+        {/* Students' corner assistant, on every signed-in page */}
+        <AssistantLauncher />
         </div>
       </BrowserRouter>
     </AuthProvider>

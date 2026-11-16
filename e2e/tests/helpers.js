@@ -44,6 +44,19 @@ export function card(page, heading) {
   return page.locator('div.rounded-lg').filter({ has: page.getByRole('heading', { name: heading }) });
 }
 
+// The students' corner assistant panel; openAssistant() clicks the corner
+// button unless the panel is already open (it stays open across page loads).
+export function assistantPanel(page) {
+  return page.getByRole('dialog', { name: 'Study assistant' });
+}
+
+export async function openAssistant(page) {
+  const panel = assistantPanel(page);
+  if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Open the study assistant' }).click();
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
 // ── Direct server calls, for setting the scene quickly ───────────────────────
 async function call(path, { token, method = 'GET', body } = {}) {
   const res = await fetch(API + path, {

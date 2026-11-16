@@ -25,7 +25,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'node fake-gemini.js',      // stand-in Gemini API for the AI summary
+      command: 'node fake-gemini.js',      // a stand-in Gemini API
       cwd: E2E_DIR,
       port: FAKE_GEMINI_PORT,
       reuseExistingServer: false,
@@ -44,10 +44,17 @@ export default defineConfig({
         JWT_SECRET: 'e2e-test-secret',
         GEMINI_API_KEY: 'test-key',
         GEMINI_BASE_URL: `http://localhost:${FAKE_GEMINI_PORT}`,
-        GEMINI_MODEL: '',               // the defaults, whatever is in your shell
-        GEMINI_FALLBACK_MODEL: '',
+        GEMINI_MODEL: '',               // the default, whatever is in your shell
+        // There's no fallback model by default; one is set so its behaviour is tested.
+        GEMINI_FALLBACK_MODEL: 'gemini-fallback-test',
         GEMINI_THINKING_LEVEL: '',
         GEMINI_OVERLOAD_SKIP_SECONDS: '',
+        // Students' own Gemini keys: encrypted with a fixed test secret, and
+        // pointed at the fake API.
+        AI_KEY_ENCRYPTION_SECRET: Buffer.alloc(32, 7).toString('base64'),
+        BYO_GEMINI_BASE_URL: `http://localhost:${FAKE_GEMINI_PORT}`,
+        ASSISTANT_DAILY_SITE_LIMIT: '',
+        STUDENT_SUMMARIES_PER_CLASS_HOUR: '3',
         CORS_ORIGIN: WEB,
       },
     },
